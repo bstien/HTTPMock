@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "1A42534F-26BB-4076-9837-1ADA2EFACC21",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "HTTPMockTests",
+        "name" : "HTTPMockTests"
+      }
+    }
+  ],
+  "version" : 1
+}
