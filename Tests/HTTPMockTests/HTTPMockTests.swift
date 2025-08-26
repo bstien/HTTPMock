@@ -9,9 +9,48 @@ struct HTTPMockTests {
     }
 
     init() {
-        HTTPMock.shared.clearQueues()
         httpMock = HTTPMock.shared
         httpMock.defaultDomain = "example.com"
+        HTTPMock.shared.clearQueues()
+    }
+
+    @Test
+    func itUsesDefaultDomain() {
+        // Add response using default domain.
+        httpMock.addResponses(forPath: "/root", responses: [.empty()])
+
+        let mockKey1 = createMockKey(path: "/root")
+        #expect(mockQueues.count == 1)
+        #expect(Set(mockQueues.keys) == Set([mockKey1]))
+
+        // Change default domain and add new response.
+        httpMock.defaultDomain = "other.example.com"
+        httpMock.addResponses(forPath: "/root", responses: [.empty()])
+
+        let mockKey2 = createMockKey(host: "other.example.com", path: "/root")
+        #expect(mockQueues.count == 2)
+        #expect(Set(mockQueues.keys) == Set([mockKey1, mockKey2]))
+    }
+
+    @Test
+    func itClearsQueues() {
+        httpMock.addResponses(forPath: "/root", host: "domain.com", responses: [.empty()])
+        httpMock.addResponses(forPath: "/root", host: "example.com", responses: [.empty()])
+        #expect(!mockQueues.isEmpty)
+
+        httpMock.clearQueues()
+        #expect(mockQueues.isEmpty)
+    }
+
+    @Test
+    func itClearsQueueForASingleHost() {
+        httpMock.addResponses(forPath: "/root", host: "domain.com", responses: [.empty()])
+        httpMock.addResponses(forPath: "/root", host: "example.com", responses: [.empty()])
+        #expect(mockQueues.count == 2)
+
+        httpMock.clearQueue(forHost: "domain.com")
+        #expect(mockQueues.count == 1)
+        #expect(mockQueues.first?.key == createMockKey(host: "example.com", path: "/root"))
     }
 
     @Test

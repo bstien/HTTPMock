@@ -3,10 +3,18 @@ import Foundation
 final class HTTPMockURLProtocol: URLProtocol {
     static var queues: [Key: [MockResponse]] = [:]
     private static let lock = DispatchQueue(label: "MockURLProtocol.lock")
-
+    
+    /// Clear all queues – basically a reset.
     static func clearQueues() {
         lock.sync {
             queues.removeAll()
+        }
+    }
+    
+    /// Clear the response queue for a single host.
+    static func clearQueue(forHost host: String) {
+        lock.sync {
+            queues = queues.filter { $0.key.host != host }
         }
     }
 

@@ -26,9 +26,14 @@ public final class HTTPMock {
         try await urlSession.data(for: request)
     }
     
-    /// Clear all response queues.
+    /// Clear all queues – basically a reset.
     public func clearQueues() {
         HTTPMockURLProtocol.clearQueues()
+    }
+
+    /// Clear the response queue for a single host.
+    public func clearQueue(forHost host: String) {
+        HTTPMockURLProtocol.clearQueue(forHost: host)
     }
 
     /// Makes sure all paths are prefixed with `/`. We need this for consistency when looking up responses from the queue.
