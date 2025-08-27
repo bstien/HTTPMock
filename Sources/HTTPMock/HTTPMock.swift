@@ -25,7 +25,7 @@ public final class HTTPMock {
     public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         try await urlSession.data(for: request)
     }
-    
+
     /// Clear all queues – basically a reset.
     public func clearQueues() {
         HTTPMockURLProtocol.clearQueues()
