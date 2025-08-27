@@ -4,10 +4,10 @@ extension HTTPMock {
     /// Register hosts/paths/responses using a hierarchical builder.
     public func registerResponses(@RegistrationBuilder _ content: () -> [Host]) {
         for host in content() {
-            for registration in host.node.flatten() {
+            for registration in host.flatten() {
                 addResponses(
                     forPath: registration.path,
-                    host: host.node.host,
+                    host: host.host,
                     responses: registration.responses
                 )
             }
@@ -16,7 +16,7 @@ extension HTTPMock {
 
     /// Register paths/responses for a single host using a path-only builder.
     public func registerResponses(host: String, @PathBuilder _ content: () -> [PathElement]) {
-        let node = Path("", content).node
+        let node = Path("", content)
         for registration in node.flatten() {
             addResponses(
                 forPath: registration.path,
