@@ -18,6 +18,10 @@ public enum PathBuilder {
         [.child(expression)]
     }
 
+    public static func buildExpression(_ expression: Headers) -> [PathElement] {
+        [.headers(expression)]
+    }
+
     public static func buildExpression(_ expression: [PathElement]) -> [PathElement] {
         expression
     }

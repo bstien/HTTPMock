@@ -5,10 +5,16 @@ extension HTTPMock {
     public func registerResponses(@RegistrationBuilder _ content: () -> [Host]) {
         for host in content() {
             for registration in host.flatten() {
+                // Map each registration to a new `MockResponse` using the inherited headers.
+                let finalResponses = registration.responses.map {
+                    $0.addingHeaders(registration.headers)
+                }
+
+                // Register the responses for the given host and path.
                 addResponses(
                     forPath: registration.path,
                     host: host.host,
-                    responses: registration.responses
+                    responses: finalResponses
                 )
             }
         }
@@ -18,10 +24,16 @@ extension HTTPMock {
     public func registerResponses(host: String, @PathBuilder _ content: () -> [PathElement]) {
         let node = Path("", content)
         for registration in node.flatten() {
+            // Map each registration to a new `MockResponse` using the inherited headers.
+            let finalResponses = registration.responses.map {
+                $0.addingHeaders(registration.headers)
+            }
+
+            // Register the responses for the given host and path.
             addResponses(
                 forPath: registration.path,
                 host: host,
-                responses: registration.responses
+                responses: finalResponses
             )
         }
     }

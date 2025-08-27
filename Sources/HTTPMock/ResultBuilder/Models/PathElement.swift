@@ -6,4 +6,5 @@ public enum PathElement {
     case response(MockResponse)
     /// Represents a nested `Path`.
     case child(Path)
+    case headers(Headers)
 }

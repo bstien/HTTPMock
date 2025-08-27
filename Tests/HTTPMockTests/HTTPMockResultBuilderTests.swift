@@ -192,6 +192,68 @@ struct HTTPMockResultBuilderTests {
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
 
+    @Test
+    func itAddsHeadersToResponses() throws {
+        httpMock.registerResponses {
+            Path("/") {
+                Headers(["header": "value"])
+                MockResponse.empty()
+            }
+        }
+
+        let firstResponse = try #require(mockQueues.first?.value.first)
+        #expect(firstResponse.headers == ["header": "value"])
+    }
+
+    @Test
+    func headersAreNotCascadedByDefault() throws {
+        httpMock.registerResponses {
+            Path("/") {
+                Headers(["header": "value"])
+
+                Path("/child") {
+                    MockResponse.empty()
+                }
+            }
+        }
+
+        let firstResponse = try #require(mockQueues.first?.value.first)
+        #expect(firstResponse.headers == [:])
+    }
+
+    @Test
+    func headersCanCascade() throws {
+        httpMock.registerResponses {
+            Path("/") {
+                Headers(["header": "value"], shouldCascade: true)
+
+                Path("/child") {
+                    MockResponse.empty()
+                }
+            }
+        }
+
+        let firstResponse = try #require(mockQueues.first?.value.first)
+        #expect(firstResponse.headers == ["header": "value"])
+    }
+
+    @Test
+    func hostLevelHeadersAreAlwaysCascaded() throws {
+        httpMock.registerResponses {
+            Host("example.com") {
+                Headers(["header": "value"], shouldCascade: true)
+                Headers(["other": "value"], shouldCascade: false)
+
+                Path("/") {
+                    MockResponse.empty()
+                }
+            }
+        }
+        
+        let firstResponse = try #require(mockQueues.first?.value.first)
+        #expect(firstResponse.headers == ["header": "value", "other": "value"])
+    }
+
     func createMockKey(host: String = "example.com", path: String = "/") -> HTTPMockURLProtocol.Key {
         .init(host: host, path: path)
     }

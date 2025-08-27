@@ -27,6 +27,17 @@ public struct MockResponse: Hashable {
             self.headers = headers
         }
     }
+
+    // MARK: - Internal methods
+
+    func addingHeaders(_ extra: [String: String]) -> MockResponse {
+        // Headers set on this response should override inherited ones on conflict.
+        MockResponse(
+            payload: self.payload,
+            status: self.status,
+            headers: extra.mergedInOther(self.headers)
+        )
+    }
 }
 
 // MARK: - Convenience initializers
