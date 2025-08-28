@@ -92,15 +92,51 @@ struct HTTPMockTests {
         #expect(mockQueues[mockKey]?.count == 0)
     }
 
-    // MARK: - Helpers
+    @Test
+    func itPopsInFifoOrderForSamePath() async throws {
+        let key = createMockKey(path: "/fifo")
+        httpMock.addResponse(.plaintext("one"), for: key)
+        httpMock.addResponse(.plaintext("two"), for: key)
+        httpMock.addResponse(.plaintext("three"), for: key)
+        #expect(mockQueues[key]?.count == 3)
 
-    func createMockKey(host: String = "example.com", path: String = "/") -> HTTPMockURLProtocol.Key {
-        .init(host: host, path: path)
+        let url = try #require(URL(string: "https://example.com/fifo"))
+        let (data1, _) = try await httpMock.urlSession.data(from: url)
+        let string1 = String(data: data1, encoding: .utf8)
+        #expect(string1 == "one")
+
+        let (data2, _) = try await httpMock.urlSession.data(from: url)
+        let string2 = String(data: data2, encoding: .utf8)
+        #expect(string2 == "two")
+
+        let (data3, _) = try await httpMock.urlSession.data(from: url)
+        let string3 = String(data: data3, encoding: .utf8)
+        #expect(string3 == "three")
+
+        #expect(mockQueues[key]?.isEmpty == true)
     }
-}
 
-extension HTTPMock {
-    func addResponse(_ response: MockResponse, for key: HTTPMockURLProtocol.Key) {
-        self.addResponses(forPath: key.path, host: key.host, responses: [response])
+    @Test
+    func itSetsDefaultContentTypeAndAllowsOverride() throws {
+        // `plaintext` default
+        let plainText = MockResponse.plaintext("hi")
+        #expect(plainText.headers["Content-Type"] == "text/plain")
+
+        // `encodable` default
+        let encodable = try MockResponse.encodable(DummyData())
+        #expect(encodable.headers["Content-Type"] == "application/json")
+
+        // override content type via explicit headers
+        let override = MockResponse.plaintext("hi", headers: ["Content-Type": "application/custom"])
+        #expect(override.headers["Content-Type"] == "application/custom")
+    }
+
+    @Test
+    func clearingUnknownHostIsNoop() {
+        httpMock.addResponses(forPath: "/root", host: "known.com", responses: [.empty()])
+        #expect(mockQueues.count == 1)
+
+        httpMock.clearQueue(forHost: "unknown.com")
+        #expect(mockQueues.count == 1)
     }
 }

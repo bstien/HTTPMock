@@ -65,7 +65,7 @@ struct HTTPMockResultBuilderTests {
         httpMock.registerResponses {
             Host("domain.com") {}
         }
-        
+
         #expect(mockQueues.isEmpty)
     }
 
@@ -76,7 +76,7 @@ struct HTTPMockResultBuilderTests {
                 Path("/some-path") {}
             }
         }
-        
+
         #expect(mockQueues.isEmpty)
     }
 
@@ -87,7 +87,7 @@ struct HTTPMockResultBuilderTests {
                 Path("/") {
                     .empty()
                 }
-                
+
                 Path("/some-other-path") {
                     .empty()
                 }
@@ -122,7 +122,7 @@ struct HTTPMockResultBuilderTests {
                 .empty()
             }
         }
-        
+
         #expect(mockQueues.count == 1)
         #expect(try #require(mockQueues.first?.key.host) == "domain.com")
     }
@@ -185,7 +185,7 @@ struct HTTPMockResultBuilderTests {
                 }
             }
         }
-        
+
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
             createMockKey(path: "////")
         ]
@@ -249,12 +249,51 @@ struct HTTPMockResultBuilderTests {
                 }
             }
         }
-        
+
         let firstResponse = try #require(mockQueues.first?.value.first)
         #expect(firstResponse.headers == ["header": "value", "other": "value"])
     }
 
-    func createMockKey(host: String = "example.com", path: String = "/") -> HTTPMockURLProtocol.Key {
-        .init(host: host, path: path)
+    @Test
+    func responseHeadersOverrideInheritedOnConflict() throws {
+        httpMock.registerResponses {
+            Host("example.com") {
+                Headers(["X-Shared": "host"]) // Cascaded by host
+                Path("/conflict") {
+                    Headers(["X-Shared": "path"]) // Local override
+                    MockResponse.plaintext("ok", headers: ["X-Shared": "response"]) // Response wins
+                }
+            }
+        }
+
+        let resp = try #require(mockQueues[createMockKey(host: "example.com", path: "/conflict")]?.first)
+        #expect(resp.headers["X-Shared"] == "response")
+    }
+
+    @Test
+    func laterHeadersInSameScopeOverrideEarlierOnSameKey() throws {
+        httpMock.registerResponses {
+            Path("/") {
+                Headers(["A": "1", "B": "x"]) // First
+                Headers(["B": "2"]) // Overrides B
+                MockResponse.empty()
+            }
+        }
+
+        let resp = try #require(mockQueues.first?.value.first)
+        #expect(resp.headers == ["A": "1", "B": "2"])
+    }
+
+    @Test
+    func headersApplyRegardlessOfPositionWithinBlock() throws {
+        httpMock.registerResponses {
+            Path("/pos") {
+                MockResponse.empty()
+                Headers(["K": "V"]) // Placed after
+            }
+        }
+
+        let resp = try #require(mockQueues[createMockKey(path: "/pos")]?.first)
+        #expect(resp.headers == ["K": "V"]) // Still applied
     }
 }
