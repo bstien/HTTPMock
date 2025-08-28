@@ -5,8 +5,15 @@ public struct Path {
     let responses: [MockResponse]
     let children: [Path]
     let localHeaders: [Headers]
+    let queryItems: [String: String]?
+    let queryMatching: QueryMatching
 
-    public init(_ path: String, @PathBuilder _ content: () -> [PathElement]) {
+    public init(
+        _ path: String,
+        queryItems: [String: String]? = nil,
+        queryMatching: QueryMatching = .exact,
+        @PathBuilder _ content: () -> [PathElement]
+    ) {
         var responses: [MockResponse] = []
         var children: [Path] = []
         var localHeaders: [Headers] = []
@@ -23,6 +30,8 @@ public struct Path {
         self.responses = responses
         self.children = children
         self.localHeaders = localHeaders
+        self.queryItems = queryItems
+        self.queryMatching = queryMatching
     }
 
     /// Recursively converts the path tree into an array of `Registration` objects.
@@ -48,11 +57,14 @@ public struct Path {
         var registrations = [Registration]()
 
         // Register this node, if it has a list of responses.
+        // Query items are NOT passed on to children.
         if !responses.isEmpty {
             let selfRegistration = Registration(
                 path: fullPath,
                 headers: headersForSelf,
-                responses: responses
+                responses: responses,
+                queryItems: queryItems,
+                queryMatching: queryMatching
             )
             registrations.append(selfRegistration)
         }

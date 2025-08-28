@@ -296,4 +296,66 @@ struct HTTPMockResultBuilderTests {
         let resp = try #require(mockQueues[createMockKey(path: "/pos")]?.first)
         #expect(resp.headers == ["K": "V"]) // Still applied
     }
+
+    // MARK: - Query params via result builder (Path init)
+
+    @Test
+    func itRegistersExactQueryParamsOnPath() throws {
+        httpMock.registerResponses {
+            Path("/search", queryItems: ["q": "swift", "page": "1"], queryMatching: .exact) {
+                .plaintext("ok-exact")
+            }
+        }
+
+        // Find the key that matches host + path
+        let key = try #require(mockQueues.keys.first { $0.host == httpMock.defaultDomain && $0.path == "/search" })
+        #expect(key.queryMatching == .exact)
+        #expect(key.queryItems == ["q": "swift", "page": "1"])
+
+        // Ensure the queued response is present
+        let queued = try #require(mockQueues[key])
+        #expect(queued.count == 1)
+    }
+
+    @Test
+    func query_exact_inResultBuilder_mustMatchAllAndOnlyThoseParams() async throws {
+        httpMock.registerResponses {
+            Path("/search", queryItems: ["q": "swift", "page": "1"], queryMatching: .exact) {
+                .plaintext("ok-exact")
+            }
+        }
+
+        // Same params, different order -> matches
+        let url1 = try #require(URL(string: "https://\(httpMock.defaultDomain)/search?page=1&q=swift"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url1)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "ok-exact")
+
+        // Extra param present -> should NOT match .exact, expect 404
+        let url2 = try #require(URL(string: "https://\(httpMock.defaultDomain)/search?page=1&q=swift&foo=bar"))
+        let (_, response2) = try await httpMock.urlSession.data(from: url2)
+        #expect(response2.httpStatusCode == 404)
+    }
+
+    @Test
+    func query_contains_inResultBuilder_allSpecifiedMustMatch_extrasIgnored() async throws {
+        httpMock.registerResponses {
+            Path("/search", queryItems: ["q": "swift"], queryMatching: .contains) {
+                MockResponse.plaintext("ok-contains-1")
+                MockResponse.plaintext("ok-contains-2")
+            }
+        }
+
+        // Has extra params -> still matches (.contains)
+        let url1 = try #require(URL(string: "https://\(httpMock.defaultDomain)/search?q=swift&page=2&sort=asc"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url1)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "ok-contains-1")
+
+        // Only specified key present -> also matches, and consumes second queued response
+        let url2 = try #require(URL(string: "https://\(httpMock.defaultDomain)/search?q=swift"))
+        let (data2, response2) = try await httpMock.urlSession.data(from: url2)
+        #expect(response2.httpStatusCode == 200)
+        #expect(data2.toString == "ok-contains-2")
+    }
 }

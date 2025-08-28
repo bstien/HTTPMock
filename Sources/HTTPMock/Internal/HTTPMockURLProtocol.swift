@@ -25,8 +25,12 @@ final class HTTPMockURLProtocol: URLProtocol {
         queryItems: [String: String]? = nil,
         queryMatching: QueryMatching = .exact
     ) {
+        let key = Key(host: host, path: path, queryItems: queryItems, queryMatching: queryMatching)
+        add(responses: responses, forKey: key)
+    }
+
+    static func add(responses: [MockResponse], forKey key: Key) {
         lock.sync {
-            let key = Key(host: host, path: path, queryItems: queryItems, queryMatching: queryMatching)
             var queue = queues[key] ?? []
             queue.append(contentsOf: responses)
             queues[key] = queue

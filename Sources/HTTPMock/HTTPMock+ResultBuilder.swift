@@ -11,11 +11,13 @@ extension HTTPMock {
                 }
 
                 // Register the responses for the given host and path.
-                addResponses(
-                    forPath: registration.path,
+                let key = HTTPMockURLProtocol.Key(
                     host: host.host,
-                    responses: finalResponses
+                    path: registration.path,
+                    queryItems: registration.queryItems,
+                    queryMatching: registration.queryMatching ?? .exact
                 )
+                HTTPMockURLProtocol.add(responses: finalResponses, forKey: key)
             }
         }
     }
@@ -30,11 +32,13 @@ extension HTTPMock {
             }
 
             // Register the responses for the given host and path.
-            addResponses(
-                forPath: registration.path,
+            let key = HTTPMockURLProtocol.Key(
                 host: host,
-                responses: finalResponses
+                path: registration.path,
+                queryItems: registration.queryItems,
+                queryMatching: registration.queryMatching ?? .exact
             )
+            HTTPMockURLProtocol.add(responses: finalResponses, forKey: key)
         }
     }
 
