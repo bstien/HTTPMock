@@ -12,13 +12,36 @@ public final class HTTPMock {
     }
 
     /// Queue responses for a given path (e.g. "/some-path") for host in `defaultDomain`. Each request will pop the next response.
-    public func addResponses(forPath path: String, responses: [MockResponse]) {
-        HTTPMockURLProtocol.add(responses: responses, forHost: defaultDomain, path: normalized(path))
+    public func addResponses(
+        forPath path: String,
+        queryItems: [String: String]? = nil,
+        queryMatching: QueryMatching = .exact,
+        responses: [MockResponse]
+    ) {
+        HTTPMockURLProtocol.add(
+            responses: responses,
+            forHost: defaultDomain,
+            path: normalized(path),
+            queryItems: queryItems,
+            queryMatching: queryMatching
+        )
     }
 
     /// Queue responses for a given path (e.g. "/some-path") on the specified domain. Each request will pop the next response.
-    public func addResponses(forPath path: String, host: String, responses: [MockResponse]) {
-        HTTPMockURLProtocol.add(responses: responses, forHost: host, path: normalized(path))
+    public func addResponses(
+        forPath path: String,
+        host: String,
+        queryItems: [String: String]? = nil,
+        queryMatching: QueryMatching = .exact,
+        responses: [MockResponse]
+    ) {
+        HTTPMockURLProtocol.add(
+            responses: responses,
+            forHost: host,
+            path: normalized(path),
+            queryItems: queryItems,
+            queryMatching: queryMatching
+        )
     }
 
     /// Convenience to perform requests to call directly.

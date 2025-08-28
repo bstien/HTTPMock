@@ -102,16 +102,13 @@ struct HTTPMockTests {
 
         let url = try #require(URL(string: "https://example.com/fifo"))
         let (data1, _) = try await httpMock.urlSession.data(from: url)
-        let string1 = String(data: data1, encoding: .utf8)
-        #expect(string1 == "one")
+        #expect(data1.toString == "one")
 
         let (data2, _) = try await httpMock.urlSession.data(from: url)
-        let string2 = String(data: data2, encoding: .utf8)
-        #expect(string2 == "two")
+        #expect(data2.toString == "two")
 
         let (data3, _) = try await httpMock.urlSession.data(from: url)
-        let string3 = String(data: data3, encoding: .utf8)
-        #expect(string3 == "three")
+        #expect(data3.toString == "three")
 
         #expect(mockQueues[key]?.isEmpty == true)
     }
@@ -126,7 +123,7 @@ struct HTTPMockTests {
         let encodable = try MockResponse.encodable(DummyData())
         #expect(encodable.headers["Content-Type"] == "application/json")
 
-        // override content type via explicit headers
+        // Override content type via explicit headers
         let override = MockResponse.plaintext("hi", headers: ["Content-Type": "application/custom"])
         #expect(override.headers["Content-Type"] == "application/custom")
     }
@@ -138,5 +135,108 @@ struct HTTPMockTests {
 
         httpMock.clearQueue(forHost: "unknown.com")
         #expect(mockQueues.count == 1)
+    }
+
+    // MARK: - Query parameter matching
+
+    @Test
+    func query_exactMatch_mustMatchAllAndOnlyThoseParams() async throws {
+        let host = "example.com"
+        let path = "/search"
+
+        // Register a response that matches only exactly these params (no extras)
+        let exactKey = createMockKey(
+            host: host,
+            path: path,
+            queryItems: ["q": "swift", "page": "1"],
+            queryMatching: .exact
+        )
+        httpMock.addResponse(.plaintext("ok-exact"), for: exactKey)
+
+        // Same params, different order -> matches
+        let url1 = try #require(URL(string: "https://\(host)\(path)?page=1&q=swift"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url1)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "ok-exact")
+
+        // Extra param present -> should NOT match .exact, expect 404
+        let url2 = try #require(URL(string: "https://\(host)\(path)?page=1&q=swift&foo=bar"))
+        let (_, response2) = try await httpMock.urlSession.data(from: url2)
+        #expect(response2.httpStatusCode == 404)
+    }
+
+    @Test
+    func query_containsMatch_allSpecifiedMustMatch_extrasIgnored() async throws {
+        let host = "example.com"
+        let path = "/search"
+
+        let containsKey = createMockKey(
+            host: host,
+            path: path,
+            queryItems: ["q": "swift"],
+            queryMatching: .contains
+        )
+        httpMock.addResponses([.plaintext("ok-contains-1"), .plaintext("ok-contains-2")], for: containsKey)
+
+        // Has extra params -> still matches (.contains)
+        let url1 = try #require(URL(string: "https://\(host)\(path)?q=swift&page=2&sort=asc"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url1)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "ok-contains-1")
+
+        // Only specified key present -> also matches
+        let url2 = try #require(URL(string: "https://\(host)\(path)?q=swift"))
+        let (data2, response2) = try await httpMock.urlSession.data(from: url2)
+        #expect(response2.httpStatusCode == 200)
+        #expect(data2.toString == "ok-contains-2")
+    }
+
+    @Test
+    func query_containsMatch_failsWhenValueDiffers() async throws {
+        let host = "example.com"
+        let path = "/search"
+
+        let containsKey = createMockKey(
+            host: host,
+            path: path,
+            queryItems: ["q": "swift"],
+            queryMatching: .contains
+        )
+        httpMock.addResponse(.plaintext("should-not-be-used"), for: containsKey)
+
+        // Value differs -> should not match, expect 404
+        let badUrl = try #require(URL(string: "https://\(host)\(path)?q=swiftlang"))
+        let (_, response) = try await httpMock.urlSession.data(from: badUrl)
+        #expect(response.httpStatusCode == 404)
+    }
+
+    @Test
+    func query_containsMatch_failsWhenRequestIsMissingQueryItems() async throws {
+        let host = "example.com"
+        let path = "/search"
+
+        let containsKey = createMockKey(
+            host: host,
+            path: path,
+            queryItems: ["q": "swift", "page": "1"],
+            queryMatching: .contains
+        )
+        httpMock.addResponse(.plaintext("will-be-hit-at-some-point"), for: containsKey)
+
+        // No query items -> should not match, expect 404
+        let url1 = try #require(URL(string: "https://\(host)\(path)"))
+        let (_, response1) = try await httpMock.urlSession.data(from: url1)
+        #expect(response1.httpStatusCode == 404)
+
+        // One query item matches -> should not match, expect 404
+        let url2 = try #require(URL(string: "https://\(host)\(path)?q=swift"))
+        let (_, response2) = try await httpMock.urlSession.data(from: url2)
+        #expect(response2.httpStatusCode == 404)
+
+        // Both query items match -> matches
+        let url3 = try #require(URL(string: "https://\(host)\(path)?q=swift&page=1"))
+        let (data3, response3) = try await httpMock.urlSession.data(from: url3)
+        #expect(response3.httpStatusCode == 200)
+        #expect(data3.toString == "will-be-hit-at-some-point")
     }
 }
