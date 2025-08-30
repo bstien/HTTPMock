@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 public struct MockResponse: Hashable {
 
@@ -92,6 +93,67 @@ extension MockResponse {
             status: status,
             headers: headers
         )
+    }
+
+    /// Load a file from a Bundle (e.g. `Bundle.module`) and queue it as a response.
+    /// Fails fast in tests if the file is missing or unreadable.
+    /// - Parameters:
+    ///   - name: The name of the file to serve.
+    ///   - fileExtension: The extension of the file to serve.
+    ///   - bundle: The bundle to search for the file.
+    ///   - status: The HTTP status to return for this response.
+    ///   - headers: Headers to include in this response.
+    ///   - contentType: The `Content-Type` for this response. Leave as `nil` to infer the content type from the file.
+    /// - Returns: A mocked response.
+    public static func file(
+        named name: String,
+        extension fileExtension: String? = nil,
+        in bundle: Bundle = .main,
+        status: Status = .ok,
+        headers: [String: String] = [:],
+        contentType: String? = nil
+    ) -> MockResponse {
+        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
+            preconditionFailure("HTTPMock: file '\(name)\(fileExtension.map {".\($0)"} ?? "")' not found in bundle \(bundle).")
+        }
+        return file(url: url, status: status, headers: headers, contentType: contentType)
+    }
+
+    /// Load file from a URL.
+    /// Fails fast in tests if the file is missing or unreadable.
+    /// - Parameters:
+    ///   - url: A URL pointing to the file to serve.
+    ///   - status: The HTTP status to return for this response.
+    ///   - headers: Headers to include in this response.
+    ///   - contentType: The `Content-Type` for this response. Leave as `nil` to infer the content type from the file.
+    /// - Returns: A mocked response.
+    public static func file(
+        url: URL,
+        status: Status = .ok,
+        headers: [String: String] = [:],
+        contentType: String? = nil
+    ) -> MockResponse {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            preconditionFailure("HTTPMock: failed reading file at \(url): \(error)")
+        }
+
+        let contentType = contentType ?? inferredMIMEType(for: url) ?? "application/octet-stream"
+
+        return MockResponse(
+            payload: .data(data, contentType: contentType),
+            status: status,
+            headers: headers
+        )
+    }
+
+    // MARK: - Private methods
+
+    /// Best-effort MIME inference from the file extension.
+    private static func inferredMIMEType(for url: URL) -> String? {
+        UTType(filenameExtension: url.pathExtension.lowercased())?.preferredMIMEType
     }
 }
 
