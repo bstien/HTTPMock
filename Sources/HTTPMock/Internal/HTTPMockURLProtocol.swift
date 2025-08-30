@@ -9,6 +9,8 @@ final class HTTPMockURLProtocol: URLProtocol {
     /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
     private lazy var passthroughSession: URLSession = URLSession(configuration: .ephemeral)
 
+    // MARK: - Internal methods
+
     /// Clear all queues – basically a reset.
     static func clearQueues() {
         lock.sync {
@@ -45,56 +47,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         }
     }
 
-    private static func pop(
-        host: String,
-        path: String,
-        query: [String: String]
-    ) -> MockResponse? {
-        lock.sync {
-            // Find the first key matching host+path(+query).
-            let matchingKey = queues.keys.first {
-                matches($0, host: host, path: path, query: query)
-            }
-
-            if let matchingKey {
-                guard var queue = queues[matchingKey], !queue.isEmpty else {
-                    return nil
-                }
-
-                let first = queue.removeFirst()
-                queues[matchingKey] = queue
-
-                if queue.isEmpty {
-                    HTTPMockLog.info("Queue now depleted for \(matchingKey.host)\(matchingKey.path) \(describeQuery(query, nil))")
-                }
-
-                return first
-            }
-            return nil
-        }
-    }
-
-    private static func matches(
-        _ key: Key,
-        host: String,
-        path: String,
-        query: [String: String]
-    ) -> Bool {
-        guard key.host == host, key.path == path else {
-            return false
-        }
-
-        guard let requiredQueryItems = key.queryItems, !requiredQueryItems.isEmpty else {
-            return true
-        }
-
-        switch key.queryMatching {
-        case .exact:
-            return requiredQueryItems == query
-        case .contains:
-            return requiredQueryItems.allSatisfy { (k, v) in query[k] == v }
-        }
-    }
+    // MARK: - Overrides
 
     // Decide whether to intercept request
     override class func canInit(with request: URLRequest) -> Bool {
@@ -192,6 +145,57 @@ final class HTTPMockURLProtocol: URLProtocol {
     }
 
     // MARK: - Private methods
+
+    private static func pop(
+        host: String,
+        path: String,
+        query: [String: String]
+    ) -> MockResponse? {
+        lock.sync {
+            // Find the first key matching host+path(+query).
+            let matchingKey = queues.keys.first {
+                matches($0, host: host, path: path, query: query)
+            }
+
+            if let matchingKey {
+                guard var queue = queues[matchingKey], !queue.isEmpty else {
+                    return nil
+                }
+
+                let first = queue.removeFirst()
+                queues[matchingKey] = queue
+
+                if queue.isEmpty {
+                    HTTPMockLog.info("Queue now depleted for \(matchingKey.host)\(matchingKey.path) \(describeQuery(query, nil))")
+                }
+
+                return first
+            }
+            return nil
+        }
+    }
+
+    private static func matches(
+        _ key: Key,
+        host: String,
+        path: String,
+        query: [String: String]
+    ) -> Bool {
+        guard key.host == host, key.path == path else {
+            return false
+        }
+
+        guard let requiredQueryItems = key.queryItems, !requiredQueryItems.isEmpty else {
+            return true
+        }
+
+        switch key.queryMatching {
+        case .exact:
+            return requiredQueryItems == query
+        case .contains:
+            return requiredQueryItems.allSatisfy { (k, v) in query[k] == v }
+        }
+    }
 
     private func statusCode(of mock: MockResponse) -> Int {
         mock.status.code
