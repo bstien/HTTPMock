@@ -86,12 +86,12 @@ public struct Path {
     /// - Parameter segments: An array of path segments to join.
     /// - Returns: A normalized path string starting with a single slash.
     func joinPaths(_ segments: [String]) -> String {
-        let trimmed = segments.compactMap {
-            if $0 == "/" {
-                return ""
+        let trimmed = segments.compactMap { path -> String? in
+            if path == "/" {
+                return nil
             }
 
-            let trimmed = $0.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return trimmed.isEmpty ? nil : trimmed
         }
         return "/" + trimmed.joined(separator: "/")

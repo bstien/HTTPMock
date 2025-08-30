@@ -174,7 +174,7 @@ struct HTTPMockResultBuilderTests {
     }
 
     @Test
-    func itDoesNotFlattenNestedRootPaths() {
+    func itFlattensNestedRootPaths() {
         httpMock.registerResponses {
             Path("/") {
                 Path("/") {
@@ -188,7 +188,7 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
-            createMockKey(path: "////")
+            createMockKey(path: "/")
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
