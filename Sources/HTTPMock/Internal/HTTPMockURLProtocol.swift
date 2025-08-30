@@ -34,6 +34,9 @@ final class HTTPMockURLProtocol: URLProtocol {
             var queue = queues[key] ?? []
             queue.append(contentsOf: responses)
             queues[key] = queue
+
+            HTTPMockLog.info("Registered \(responses.count) response(s) for \(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))")
+            HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
         }
     }
 
@@ -55,6 +58,11 @@ final class HTTPMockURLProtocol: URLProtocol {
 
                 let first = queue.removeFirst()
                 queues[matchingKey] = queue
+
+                if queue.isEmpty {
+                    HTTPMockLog.info("Queue now depleted for \(matchingKey.host)\(matchingKey.path) \(describeQuery(query, nil))")
+                }
+
                 return first
             }
             return nil
@@ -117,9 +125,14 @@ final class HTTPMockURLProtocol: URLProtocol {
         let path = components.path.isEmpty ? "/" : components.path
         let queryDict = components.queryItems.toDictionary
 
+        HTTPMockLog.trace("Request → \(host)\(path) \(Self.describeQuery(queryDict, nil))")
+
         // Look for, and pop, the next queued response mathing host, path and query params.
         if let mock = Self.pop(host: host, path: path, query: queryDict) {
             do {
+                HTTPMockLog.info("Serving mock for \(host)\(path) (\(statusCode(of: mock)))")
+                HTTPMockLog.debug("Remaining queue for \(host)\(path): \(Self.queueSize(host: host, path: path, query: queryDict))")
+
                 let response = HTTPURLResponse(
                     url: url,
                     statusCode: mock.status.code,
@@ -135,6 +148,8 @@ final class HTTPMockURLProtocol: URLProtocol {
                 client?.urlProtocol(self, didFailWithError: error)
             }
         } else {
+            HTTPMockLog.error("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — returning 404")
+
             // Nothing queued. Fallback to 404.
             let resp = HTTPURLResponse(
                 url: url,
@@ -150,5 +165,27 @@ final class HTTPMockURLProtocol: URLProtocol {
 
     override func stopLoading() {
         // NOOP
+    }
+
+    // MARK: - Private methods
+
+    private func statusCode(of mock: MockResponse) -> Int {
+        mock.status.code
+    }
+
+    private static func queueSize(host: String, path: String, query: [String: String]) -> Int {
+        lock.sync {
+            queues
+                .filter { matches($0.key, host: host, path: path, query: query) }
+                .map(\.value.count)
+                .first ?? 0
+        }
+    }
+
+    private static func describeQuery(_ query: [String: String]?, _ queryMatching: QueryMatching?) -> String {
+        guard let query, !query.isEmpty else { return "" }
+
+        let parts = query.map { "\($0)=\($1)" }.sorted().joined(separator: "&")
+        return "[query \(queryMatching ?? .exact): \(parts)]"
     }
 }

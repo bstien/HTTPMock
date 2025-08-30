@@ -12,6 +12,7 @@ struct HTTPMockResultBuilderTests {
         httpMock = HTTPMock.shared
         httpMock.defaultDomain = "example.com"
         HTTPMock.shared.clearQueues()
+        HTTPMockLog.level = .trace
     }
 
     @Test
