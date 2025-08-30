@@ -239,4 +239,58 @@ struct HTTPMockTests {
         #expect(response3.httpStatusCode == 200)
         #expect(data3.toString == "will-be-hit-at-some-point")
     }
+
+    // MARK: - File serving
+
+    @Test
+    func itServesFileFromURL_withInferredContentType() async throws {
+        let host = "example.com"
+        let path = "/file-json"
+        let contents = "{\"hello\":\"world\"}"
+        let url = try writeTempFile(named: "fixture", ext: "json", contents: Data(contents.utf8))
+
+        let key = createMockKey(host: host, path: path)
+        httpMock.addResponse(.file(url: url), for: key)
+
+        let requestURL = try #require(URL(string: "https://\(host)\(path)"))
+        let (data, response) = try await httpMock.urlSession.data(from: requestURL)
+
+        #expect(response.httpStatusCode == 200)
+        #expect(data.toString == contents)
+
+        #expect(response.headerValue(for: "Content-Type") == "application/json")
+    }
+
+    @Test
+    func itServesFileFromURL_withExplicitContentTypeAndHeaders() async throws {
+        let host = "example.com"
+        let path = "/file-custom"
+        let contents = "BINARYDATA"
+        let url = try writeTempFile(named: "blob", ext: "bin", contents: Data(contents.utf8))
+
+        let key = createMockKey(host: host, path: path)
+        httpMock.addResponse(
+            .file(url: url, status: .ok, headers: ["Cache-Control": "no-store"], contentType: "application/custom"),
+            for: key
+        )
+
+        let requestURL = try #require(URL(string: "https://\(host)\(path)"))
+        let (data, response) = try await httpMock.urlSession.data(from: requestURL)
+
+        #expect(response.httpStatusCode == 200)
+        #expect(data.toString == contents)
+
+        #expect(response.headerValue(for: "Content-Type") == "application/custom")
+        #expect(response.headerValue(for: "Cache-Control") == "no-store")
+    }
+
+    // MARK: - Helpers
+
+    private func writeTempFile(named: String, ext: String, contents: Data) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+        let url = dir.appendingPathComponent(named).appendingPathExtension(ext)
+        try? FileManager.default.removeItem(at: url)
+        try contents.write(to: url, options: .atomic)
+        return url
+    }
 }
