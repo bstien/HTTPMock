@@ -2,8 +2,13 @@ import Foundation
 
 public final class HTTPMock {
     public static let shared = HTTPMock()
-    public var defaultDomain = "example.com"
     public let urlSession: URLSession
+    public var defaultDomain = "example.com"
+
+    public var unmockedPolicy: UnmockedPolicy {
+        get { HTTPMockURLProtocol.unmockedPolicy }
+        set { HTTPMockURLProtocol.unmockedPolicy = newValue }
+    }
 
     private init() {
         let configuration = URLSessionConfiguration.ephemeral

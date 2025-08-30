@@ -2,7 +2,12 @@ import Foundation
 
 final class HTTPMockURLProtocol: URLProtocol {
     static var queues: [Key: [MockResponse]] = [:]
+    static var unmockedPolicy: UnmockedPolicy = .notFound
+    private static let handledKey = "HTTPMockHandled"
     private static let lock = DispatchQueue(label: "MockURLProtocol.lock")
+
+    /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
+    private lazy var passthroughSession: URLSession = URLSession(configuration: .ephemeral)
 
     /// Clear all queues – basically a reset.
     static func clearQueues() {
@@ -93,19 +98,13 @@ final class HTTPMockURLProtocol: URLProtocol {
 
     // Decide whether to intercept request
     override class func canInit(with request: URLRequest) -> Bool {
-        guard let url = request.url, let host = url.host else {
+        // Avoid re-entrancy if we are already proxying/passthrough for this request
+        if URLProtocol.property(forKey: handledKey, in: request) as? Bool == true {
             return false
         }
 
-        let path = url.path.isEmpty ? "/" : url.path
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let queryDict = components?.queryItems.toDictionary ?? [:]
-
-        return lock.sync {
-            queues.keys.contains {
-                matches($0, host: host, path: path, query: queryDict)
-            }
-        }
+        // Intercept all requests made with sessions that include this protocol
+        return true
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -131,7 +130,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         if let mock = Self.pop(host: host, path: path, query: queryDict) {
             do {
                 HTTPMockLog.info("Serving mock for \(host)\(path) (\(statusCode(of: mock)))")
-                HTTPMockLog.debug("Remaining queue for \(host)\(path): \(Self.queueSize(host: host, path: path, query: queryDict))")
+                HTTPMockLog.debug("Remaining queue for \(host)\(path) \(Self.describeQuery(queryDict, nil)): \(Self.queueSize(host: host, path: path, query: queryDict))")
 
                 let response = HTTPURLResponse(
                     url: url,
@@ -148,18 +147,43 @@ final class HTTPMockURLProtocol: URLProtocol {
                 client?.urlProtocol(self, didFailWithError: error)
             }
         } else {
-            HTTPMockLog.error("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — returning 404")
+            switch Self.unmockedPolicy {
+            case .notFound:
+                HTTPMockLog.error("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — returning 404")
+                let resp = HTTPURLResponse(
+                    url: url,
+                    statusCode: 404,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: Data("No mock for \(host)\(path)".utf8))
+                client?.urlProtocolDidFinishLoading(self)
 
-            // Nothing queued. Fallback to 404.
-            let resp = HTTPURLResponse(
-                url: url,
-                statusCode: 404,
-                httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "text/plain"]
-            )!
-            client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: Data("No mock for \(host)\(path)".utf8))
-            client?.urlProtocolDidFinishLoading(self)
+            case .passthrough:
+                HTTPMockLog.info("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — passthrough to network")
+                var req = request
+                let mutableReq = (req as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+                URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutableReq) // prevent loop
+                req = mutableReq as URLRequest
+                let task = passthroughSession.dataTask(with: req) { data, response, error in
+                    if let error {
+                        self.client?.urlProtocol(self, didFailWithError: error)
+                        return
+                    }
+
+                    if let response {
+                        self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                    }
+
+                    if let data {
+                        self.client?.urlProtocol(self, didLoad: data)
+                    }
+
+                    self.client?.urlProtocolDidFinishLoading(self)
+                }
+                task.resume()
+            }
         }
     }
 
