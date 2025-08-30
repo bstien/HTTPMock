@@ -34,6 +34,15 @@ struct HTTPMockTests {
     }
 
     @Test
+    func itReturnsAHardcodedMessageOn404NotFound() async throws {
+        let url = try #require(URL(string: "https://example.com"))
+        let (data, response) = try await httpMock.urlSession.data(from: url)
+
+        #expect(response.httpStatusCode == 404)
+        #expect(data.toString == "No mock for example.com/")
+    }
+
+    @Test
     func itClearsQueues() {
         httpMock.addResponses(forPath: "/root", host: "domain.com", responses: [.empty()])
         httpMock.addResponses(forPath: "/root", host: "example.com", responses: [.empty()])
