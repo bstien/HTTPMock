@@ -142,7 +142,7 @@ They set sensible defaults (e.g., `Content-Type` for JSON/plaintext) and let exp
 
 ## Goals
 - [ ] Set delay on requests.
-- [ ] Let user point to a file that should be served.
+- [X] Let user point to a file that should be served.
 - [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
 - [ ] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of paralell.
-- [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup
+- [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.
