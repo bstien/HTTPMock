@@ -55,7 +55,7 @@ HTTPMock.shared.addResponses(forPath: "/user", host: "api.example.com") {
 
 ### Option 2 — Declarative DSL via result builder
 ```swift
-HTTPMock.registerResponses {
+HTTPMock.shared.registerResponses {
     Host("api.example.com") {
         Path("/user") {
             MockResponse.encodable(User(id: 1, name: "Alice"))
@@ -69,7 +69,7 @@ Both approaches are equivalent — pick what suits your use case. **Responses ar
 
 ## Headers (with optional cascade)
 ```swift
-HTTPMock.registerResponses {
+HTTPMock.shared.registerResponses {
     Host("api.example.com") {
         Headers(["X-Env": "Test"], cascade: true) // cascades to all child paths
 
@@ -111,7 +111,7 @@ Path("/search", query: ["q": "swift"], matching: .contains) {
 Serve response data directly from a file on disk. Useful for pre-recorded and/or large responses. Either specify the `Content-Type` manually, or let it be inferred from the file.
 
 ```swift
-HTTPMock.registerResponses {
+HTTPMock.shared.registerResponses {
     Host("api.example.com") {
         Path("/data") {
             // Point to a file in the specified `Bundle`.
@@ -131,11 +131,11 @@ By default, unmocked requests return a hardcoded 404 response with a small body.
 
 ```swift
 // Default: return a hardcoded 404 response when no mock is registered for the incoming URL.
-HTTPMock.unmockedPolicy = .notFound
+HTTPMock.shared.unmockedPolicy = .notFound
 
 // Alternative: let unmocked requests hit the real network.
 // This can be useful if you're doing integration testing and only want to mock certain endpoints. 
-HTTPMock.unmockedPolicy = .passthrough
+HTTPMock.shared.unmockedPolicy = .passthrough
 ```
 
 Passthrough is useful for integration-style tests where only some endpoints need mocking, but it is not recommended for strict unit tests.
