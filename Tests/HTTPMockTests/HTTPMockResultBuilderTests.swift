@@ -4,14 +4,16 @@ import Foundation
 
 struct HTTPMockResultBuilderTests {
     let httpMock: HTTPMock
+    let identifier: UUID
+
     var mockQueues: [HTTPMockURLProtocol.Key: [MockResponse]] {
-        HTTPMockURLProtocol.queues
+        HTTPMockURLProtocol.getQueue(for: identifier)
     }
 
     init() {
-        httpMock = HTTPMock.shared
+        identifier = UUID()
+        httpMock = HTTPMock(identifier: identifier)
         httpMock.defaultDomain = "example.com"
-        HTTPMock.shared.clearQueues()
         HTTPMockLog.level = .trace
     }
 
