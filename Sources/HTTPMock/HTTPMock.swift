@@ -10,10 +10,11 @@ public final class HTTPMock {
         set { HTTPMockURLProtocol.unmockedPolicy = newValue }
     }
 
-    private init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [HTTPMockURLProtocol.self]
-        urlSession = URLSession(configuration: configuration)
+    let mockIdentifier: UUID
+
+    init(identifier mockIdentifier: UUID = UUID()) {
+        self.mockIdentifier = mockIdentifier
+        urlSession = URLSession.identifiedSession(with: mockIdentifier)
     }
 
     /// Queue responses for a given path (e.g. "/some-path") for host in `defaultDomain`. Each request will pop the next response.
