@@ -12,7 +12,11 @@ public final class HTTPMock {
 
     let mockIdentifier: UUID
 
-    init(identifier mockIdentifier: UUID = UUID()) {
+    public convenience init() {
+        self.init(identifier: UUID())
+    }
+
+    required init(identifier mockIdentifier: UUID) {
         self.mockIdentifier = mockIdentifier
         urlSession = URLSession.identifiedSession(with: mockIdentifier)
     }
