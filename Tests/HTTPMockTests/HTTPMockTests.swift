@@ -428,8 +428,8 @@ struct HTTPMockTests {
     @Test
     func delivery_appliesPerResponse_inFifoOrder() async throws {
         let key = createMockKey(path: "/delay-sequence")
-        httpMock.addResponse(.plaintext("requested-first-but-delivered-second", delivery: .delayed(0.2)), for: key)
-        httpMock.addResponse(.plaintext("requested-second-but-delivered-first", delivery: .delayed(0.1)), for: key)
+        httpMock.addResponse(.plaintext("requested-first-but-delivered-second", delivery: .delayed(0.5)), for: key)
+        httpMock.addResponse(.plaintext("requested-second-but-delivered-first", delivery: .instant), for: key)
 
 
         let url = try #require(URL(string: "https://example.com/delay-sequence"))
