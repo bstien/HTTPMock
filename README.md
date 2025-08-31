@@ -141,6 +141,21 @@ HTTPMock.shared.registerResponses {
 
 The file path is relative to the current working directory or absolute. This allows you to serve JSON, images, or any other file content as the response body.
 
+## Response lifetime
+Each response can be configured with a `lifetime` parameter to control how many times it is served before being removed from the queue. The default value of the parameter is `.single`.
+
+- `.single`: The response is served once, then removed from the queue. This is the default.
+- `.multiple(Int)`: The response is served the specified number of times, then removed from the queue.
+- `.eternal`: The response is never removed and is served indefinitely.
+
+Example:
+
+```swift
+MockResponse.plaintext("served once", lifetime: .single)
+MockResponse.plaintext("served three times", lifetime: .multiple(3))
+MockResponse.plaintext("served forever", lifetime: .eternal)
+```
+
 ## Handling unmocked requests
 By default, unmocked requests return a hardcoded 404 response with a small body. You can configure `HTTPMock.unmockedPolicy` to control this behavior, choosing between returning a 404 or allowing the request to pass through to the real network. The default is `notFound`, aka. the hardoced 404 response.
 
