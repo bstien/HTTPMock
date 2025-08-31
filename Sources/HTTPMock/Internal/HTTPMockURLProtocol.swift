@@ -36,13 +36,30 @@ final class HTTPMockURLProtocol: URLProtocol {
         add(responses: responses, forKey: key)
     }
 
-    static func add(responses: [MockResponse], forKey key: Key) {
+    static func add(responses givenResponses: [MockResponse], forKey key: Key) {
         lock.sync {
+            let responses = givenResponses.filter(\.hasValidLifetime)
+
+            guard !responses.isEmpty else {
+                if givenResponses.isEmpty {
+                    HTTPMockLog.trace("No valid responses provided. Skipping registration.")
+                } else {
+                    HTTPMockLog.trace("\(givenResponses.count) response(s) provided, but none were valid. Skipping registration.")
+                }
+                return
+            }
+
             var queue = queues[key] ?? []
+
+            // Let user know if they're trying to insert responses after an eternal mock.
+            if queue.contains(where: \.isEternal) {
+                HTTPMockLog.warning("Registering response(s) after an eternal mock for \(mockKeyDescription(key)). These responses will never be served.")
+            }
+
             queue.append(contentsOf: responses)
             queues[key] = queue
 
-            HTTPMockLog.info("Registered \(responses.count) response(s) for \(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))")
+            HTTPMockLog.info("Registered \(responses.count) response(s) for \(mockKeyDescription(key))")
             HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
         }
     }
@@ -76,14 +93,15 @@ final class HTTPMockURLProtocol: URLProtocol {
 
         let path = components.path.isEmpty ? "/" : components.path
         let queryDict = components.queryItems.toDictionary
+        let requestDescription = Self.requestDescription(host: host, path: path, query: queryDict)
 
-        HTTPMockLog.trace("Request → \(host)\(path) \(Self.describeQuery(queryDict, nil))")
+        HTTPMockLog.trace("Handling request → \(requestDescription)")
 
         // Look for, and pop, the next queued response mathing host, path and query params.
         if let mock = Self.pop(host: host, path: path, query: queryDict) {
             do {
                 HTTPMockLog.info("Serving mock for \(host)\(path) (\(statusCode(of: mock)))")
-                HTTPMockLog.debug("Remaining queue for \(host)\(path) \(Self.describeQuery(queryDict, nil)): \(Self.queueSize(host: host, path: path, query: queryDict))")
+                HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(host: host, path: path, query: queryDict))")
 
                 let response = HTTPURLResponse(
                     url: url,
@@ -102,7 +120,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         } else {
             switch Self.unmockedPolicy {
             case .notFound:
-                HTTPMockLog.error("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — returning 404")
+                HTTPMockLog.error("No mock found for \(requestDescription) — returning 404")
                 let resp = HTTPURLResponse(
                     url: url,
                     statusCode: 404,
@@ -114,7 +132,7 @@ final class HTTPMockURLProtocol: URLProtocol {
                 client?.urlProtocolDidFinishLoading(self)
 
             case .passthrough:
-                HTTPMockLog.info("No mock found for \(host)\(path) \(Self.describeQuery(queryDict, nil)) — passthrough to network")
+                HTTPMockLog.info("No mock found for \(requestDescription) — passthrough to network")
                 var req = request
                 let mutableReq = (req as NSURLRequest).mutableCopy() as! NSMutableURLRequest
                 URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutableReq) // prevent loop
@@ -163,10 +181,29 @@ final class HTTPMockURLProtocol: URLProtocol {
                 }
 
                 let first = queue.removeFirst()
-                queues[matchingKey] = queue
+                switch first.lifetime {
+                case .single:
+                    queues[matchingKey] = queue
+                case .multiple(let count):
+                    switch count {
+                    case _ where count < 0, 0:
+                        // Ignore this mock if lifetime count is at, or below, 0.
+                        queues[matchingKey] = queue
+                        return nil
+                    case 1:
+                        queues[matchingKey] = queue
+                    default:
+                        let copy = first.copyWithNewLifetime(.multiple(count - 1))
+                        queues[matchingKey] = [copy] + queue
+                        HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
+                        return copy
+                    }
+                case .eternal:
+                    return first
+                }
 
                 if queue.isEmpty {
-                    HTTPMockLog.info("Queue now depleted for \(matchingKey.host)\(matchingKey.path) \(describeQuery(query, nil))")
+                    HTTPMockLog.info("Queue now depleted for \(mockKeyDescription(matchingKey))")
                 }
 
                 return first
@@ -196,9 +233,21 @@ final class HTTPMockURLProtocol: URLProtocol {
             return requiredQueryItems.allSatisfy { (k, v) in query[k] == v }
         }
     }
+}
 
+// MARK: - Helper utils for logging
+
+extension HTTPMockURLProtocol {
     private func statusCode(of mock: MockResponse) -> Int {
         mock.status.code
+    }
+
+    private static func requestDescription(host: String, path: String, query: [String: String]) -> String {
+        "\(host)\(path) \(describeQuery(query, nil, dropQueryMatching: true))"
+    }
+
+    private static func mockKeyDescription(_ key: Key) -> String {
+        "\(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))"
     }
 
     private static func queueSize(host: String, path: String, query: [String: String]) -> Int {
@@ -210,10 +259,21 @@ final class HTTPMockURLProtocol: URLProtocol {
         }
     }
 
-    private static func describeQuery(_ query: [String: String]?, _ queryMatching: QueryMatching?) -> String {
-        guard let query, !query.isEmpty else { return "" }
+    private static func describeQuery(
+        _ query: [String: String]?,
+        _ queryMatching: QueryMatching?,
+        dropQueryMatching: Bool = false
+    ) -> String {
+        guard let query, !query.isEmpty else {
+            return "[query empty]"
+        }
 
         let parts = query.map { "\($0)=\($1)" }.sorted().joined(separator: "&")
-        return "[query \(queryMatching ?? .exact): \(parts)]"
+
+        if dropQueryMatching {
+            return "[query: \(parts)]"
+        } else {
+            return "[query \(queryMatching ?? .exact): \(parts)]"
+        }
     }
 }
