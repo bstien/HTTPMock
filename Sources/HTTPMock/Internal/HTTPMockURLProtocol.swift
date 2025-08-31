@@ -99,23 +99,34 @@ final class HTTPMockURLProtocol: URLProtocol {
 
         // Look for, and pop, the next queued response mathing host, path and query params.
         if let mock = Self.pop(host: host, path: path, query: queryDict) {
-            do {
-                HTTPMockLog.info("Serving mock for \(host)\(path) (\(statusCode(of: mock)))")
-                HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(host: host, path: path, query: queryDict))")
+            let sendResponse = { [weak self] in
+                guard let self else { return }
+                do {
+                    HTTPMockLog.info("Serving mock for \(host)\(path) (\(self.statusCode(of: mock)))")
+                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(host: host, path: path, query: queryDict))")
 
-                let response = HTTPURLResponse(
-                    url: url,
-                    statusCode: mock.status.code,
-                    httpVersion: "HTTP/1.1",
-                    headerFields: mock.headers
-                )!
+                    let response = HTTPURLResponse(
+                        url: url,
+                        statusCode: mock.status.code,
+                        httpVersion: "HTTP/1.1",
+                        headerFields: mock.headers
+                    )!
 
-                let payload = try mock.payloadData()
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: payload)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                client?.urlProtocol(self, didFailWithError: error)
+                    let payload = try mock.payloadData()
+                    self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                    self.client?.urlProtocol(self, didLoad: payload)
+                    self.client?.urlProtocolDidFinishLoading(self)
+                } catch {
+                    self.client?.urlProtocol(self, didFailWithError: error)
+                }
+            }
+
+            switch mock.delivery {
+            case .instant:
+                sendResponse()
+            case .delayed(let delay):
+                HTTPMockLog.info("Delaying response for \(requestDescription) for \(delay) seconds")
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay, execute: sendResponse)
             }
         } else {
             switch Self.unmockedPolicy {
