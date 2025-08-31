@@ -387,6 +387,70 @@ struct HTTPMockTests {
         }
     }
 
+    // MARK: - Delivery (delay) tests
+
+    @Test
+    func delivery_immediate_returnsQuickly() async throws {
+        let key = createMockKey(path: "/delay-immediate")
+        httpMock.addResponse(.plaintext("ok", delivery: .instant), for: key)
+
+        let url = try #require(URL(string: "https://example.com/delay-immediate"))
+        let start = Date()
+        let (data, response) = try await httpMock.urlSession.data(from: url)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(response.httpStatusCode == 200)
+        #expect(data.toString == "ok")
+
+        // Should complete fast. Allow some time, "just in case"™.
+        #expect(elapsed < 0.1)
+    }
+
+    @Test
+    func delivery_delayed_respectsInterval() async throws {
+        let key = createMockKey(path: "/delay-300ms")
+        httpMock.addResponse(.plaintext("slow", delivery: .delayed(0.3)), for: key)
+
+        let url = try #require(URL(string: "https://example.com/delay-300ms"))
+        let start = Date()
+        let (data, response) = try await httpMock.urlSession.data(from: url)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(response.httpStatusCode == 200)
+        #expect(data.toString == "slow")
+
+        // Subtract some time, just in case of scheduling jitter.
+        #expect(elapsed >= 0.28)
+    }
+
+    @Test
+    func delivery_appliesPerResponse_inFifoOrder() async throws {
+        let key = createMockKey(path: "/delay-sequence")
+        httpMock.addResponse(.plaintext("requested-first-but-delivered-second", delivery: .delayed(0.2)), for: key)
+        httpMock.addResponse(.plaintext("requested-second-but-delivered-first", delivery: .delayed(0.1)), for: key)
+
+
+        let url = try #require(URL(string: "https://example.com/delay-sequence"))
+
+        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+            group.addTask { try await httpMock.urlSession.data(from: url) }
+            group.addTask { try await httpMock.urlSession.data(from: url) }
+
+            var resultStrings = [String]()
+            for try await tuple in group {
+                resultStrings.append(tuple.0.toString)
+            }
+
+            let expectedOrder = [
+                "requested-second-but-delivered-first",
+                "requested-first-but-delivered-second"
+            ]
+            #expect(resultStrings == expectedOrder)
+        }
+
+        #expect(mockQueues[key]?.isEmpty == true)
+    }
+
     // MARK: - Helpers
 
     private func writeTempFile(named: String, ext: String, contents: Data) throws -> URL {
