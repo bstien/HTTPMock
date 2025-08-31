@@ -5,8 +5,9 @@ import Foundation
 struct HTTPMockTests {
     let httpMock: HTTPMock
     let identifier: UUID
+
     var mockQueues: [HTTPMockURLProtocol.Key: [MockResponse]] {
-        HTTPMockURLProtocol.queues[identifier] ?? [:]
+        HTTPMockURLProtocol.getQueue(for: identifier)
     }
 
     init() {
@@ -450,6 +451,90 @@ struct HTTPMockTests {
         }
 
         #expect(mockQueues[key]?.isEmpty == true)
+    }
+
+
+    // MARK: - Multiple instance isolation
+
+    @Test
+    func instances_haveIsolatedQueues() {
+        // Current test instance has its own identifier/queues
+        #expect(mockQueues.isEmpty)
+
+        // Create a separate instance with its own identifier
+        let otherIdentifier = UUID()
+        let other = HTTPMock(identifier: otherIdentifier)
+
+        // Register responses in both
+        httpMock.addResponses(forPath: "/a", host: "one.example.com", responses: [.empty()])
+        other.addResponses(forPath: "/b", host: "two.example.com", responses: [.empty()])
+
+        // Queues are stored per-identifier; they should not mix
+        let queues1 = HTTPMockURLProtocol.getQueue(for: identifier)
+        let queues2 = HTTPMockURLProtocol.getQueue(for: otherIdentifier)
+
+        #expect(queues1.count == 1)
+        #expect(queues2.count == 1)
+        #expect(Set(queues1.keys.map { $0.host }) == ["one.example.com"])
+        #expect(Set(queues2.keys.map { $0.host }) == ["two.example.com"])
+    }
+
+    @Test
+    func instances_doNotCrossServeResponses() async throws {
+        // Two isolated mocks
+        let idA = UUID()
+        let mockA = HTTPMock(identifier: idA)
+        mockA.defaultDomain = "api.a.com"
+
+        let idB = UUID()
+        let mockB = HTTPMock(identifier: idB)
+        mockB.defaultDomain = "api.b.com"
+
+        // Same path on different hosts, different payloads, and both responses eternal
+        mockA.addResponses(forPath: "/ping", responses: [.plaintext("A", lifetime: .eternal)])
+        mockB.addResponses(forPath: "/ping", responses: [.plaintext("B", lifetime: .eternal)])
+
+        let urlA = try #require(URL(string: "https://api.a.com/ping"))
+        let urlB = try #require(URL(string: "https://api.b.com/ping"))
+
+        let (dataA, responseA) = try await mockA.urlSession.data(from: urlA)
+        #expect(responseA.httpStatusCode == 200)
+        #expect(dataA.toString == "A")
+
+        let (dataB, responseB) = try await mockB.urlSession.data(from: urlB)
+        #expect(responseB.httpStatusCode == 200)
+        #expect(dataB.toString == "B")
+
+        // Cross-call: mockA hitting B's URL should be 404 (no queue in A for that host)
+        let (_, crossResponse1) = try await mockA.urlSession.data(from: urlB)
+        #expect(crossResponse1.httpStatusCode == 404)
+
+        // And mockB hitting A's URL should be 404
+        let (_, crossResponse2) = try await mockB.urlSession.data(from: urlA)
+        #expect(crossResponse2.httpStatusCode == 404)
+    }
+
+    @Test
+    func clearingOneInstanceDoesNotAffectAnother() {
+        let otherId = UUID()
+        let other = HTTPMock(identifier: otherId)
+
+        httpMock.addResponses(forPath: "/x", host: "x.com", responses: [.empty()])
+        other.addResponses(forPath: "/y", host: "y.com", responses: [.empty()])
+
+        // Sanity
+        #expect(HTTPMockURLProtocol.getQueue(for: identifier).count == 1)
+        #expect(HTTPMockURLProtocol.getQueue(for: otherId).count == 1)
+
+        // Clear only this test instance
+        httpMock.clearQueues()
+
+        #expect(HTTPMockURLProtocol.getQueue(for: identifier).isEmpty)
+        #expect(HTTPMockURLProtocol.getQueue(for: otherId).count == 1)
+
+        // Now clear the other; both should be empty
+        other.clearQueues()
+        #expect(HTTPMockURLProtocol.getQueue(for: otherId).isEmpty)
     }
 
     // MARK: - Helpers

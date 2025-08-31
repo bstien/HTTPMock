@@ -5,8 +5,9 @@ import Foundation
 struct HTTPMockResultBuilderTests {
     let httpMock: HTTPMock
     let identifier: UUID
+
     var mockQueues: [HTTPMockURLProtocol.Key: [MockResponse]] {
-        HTTPMockURLProtocol.queues[identifier] ?? [:]
+        HTTPMockURLProtocol.getQueue(for: identifier)
     }
 
     init() {
