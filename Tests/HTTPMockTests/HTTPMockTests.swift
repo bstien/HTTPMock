@@ -43,6 +43,37 @@ struct HTTPMockTests {
     }
 
     @Test
+    func itDoesNotRegisterTheKeyIfNoResponsesAreProvided() {
+        let key = createMockKey()
+        httpMock.addResponses([], for: key)
+
+        #expect(mockQueues.isEmpty)
+    }
+
+    @Test
+    func itDoesNotRegisterResponsesWithInvalidLifetimes() {
+        let key = createMockKey()
+        httpMock.addResponses([
+            .empty(lifetime: .multiple(0)),
+            .empty(lifetime: .multiple(-1)),
+        ], for: key)
+
+        #expect(mockQueues.isEmpty)
+    }
+
+    @Test
+    func itAllowsRegisteringResponsesAfterAnEternalResponse() {
+        let key = createMockKey()
+        httpMock.addResponses([
+            .empty(lifetime: .eternal),
+            .empty(lifetime: .single),
+            .empty(lifetime: .multiple(100)),
+        ], for: key)
+
+        #expect(mockQueues[key]?.count == 3)
+    }
+
+    @Test
     func itClearsQueues() {
         httpMock.addResponses(forPath: "/root", host: "domain.com", responses: [.empty()])
         httpMock.addResponses(forPath: "/root", host: "example.com", responses: [.empty()])
@@ -292,6 +323,68 @@ struct HTTPMockTests {
 
         #expect(response.headerValue(for: "Content-Type") == "application/custom")
         #expect(response.headerValue(for: "Cache-Control") == "no-store")
+    }
+
+    // MARK: - Lifetime tests
+
+    @Test
+    func lifetime_single_isConsumedOnce() async throws {
+        let key = createMockKey(path: "/lifetime-single")
+        httpMock.addResponse(.plaintext("once", lifetime: .single), for: key)
+        #expect(mockQueues[key]?.count == 1)
+
+        let url = try #require(URL(string: "https://example.com/lifetime-single"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "once")
+
+        // Consumed and removed
+        #expect(mockQueues[key]?.isEmpty == true)
+
+        // Next call should 404 since nothing is queued
+        let (_, response2) = try await httpMock.urlSession.data(from: url)
+        #expect(response2.httpStatusCode == 404)
+    }
+
+    @Test
+    func lifetime_multiple_isConsumedNTimes_thenRemoved() async throws {
+        let key = createMockKey(path: "/lifetime-multi")
+        httpMock.addResponse(.plaintext("multi", lifetime: .multiple(3)), for: key)
+        #expect(mockQueues[key]?.count == 1)
+
+        let url = try #require(URL(string: "https://example.com/lifetime-multi"))
+
+        for _ in 1...3 {
+            let (data, response) = try await httpMock.urlSession.data(from: url)
+            #expect(response.httpStatusCode == 200)
+            #expect(data.toString == "multi")
+            // After each hit, the single queue entry either decrements or is removed at the end.
+            // We only assert final removal below.
+        }
+
+        // After 3 uses it should be removed
+        #expect(mockQueues[key]?.isEmpty == true)
+
+        // A fourth call should 404
+        let (_, response) = try await httpMock.urlSession.data(from: url)
+        #expect(response.httpStatusCode == 404)
+    }
+
+    @Test
+    func lifetime_eternal_isNeverRemoved() async throws {
+        let key = createMockKey(path: "/lifetime-eternal")
+        httpMock.addResponse(.plaintext("eternal", lifetime: .eternal), for: key)
+        #expect(mockQueues[key]?.count == 1)
+
+        let url = try #require(URL(string: "https://example.com/lifetime-eternal"))
+
+        // Hit it multiple times. It should keep serving and never be removed.
+        for _ in 0..<5 {
+            let (data, response) = try await httpMock.urlSession.data(from: url)
+            #expect(response.httpStatusCode == 200)
+            #expect(data.toString == "eternal")
+            #expect(mockQueues[key]?.count == 1) // Still present
+        }
     }
 
     // MARK: - Helpers
