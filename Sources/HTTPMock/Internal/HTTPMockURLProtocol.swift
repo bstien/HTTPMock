@@ -11,6 +11,18 @@ final class HTTPMockURLProtocol: URLProtocol {
 
     // MARK: - Internal methods
 
+    static func setQueue(for mockIdentifier: UUID, _ queue: [Key: [MockResponse]]) {
+        lock.sync {
+            queues[mockIdentifier] = queue
+        }
+    }
+
+    static func getQueue(for mockIdentifier: UUID) -> [Key: [MockResponse]] {
+        lock.sync {
+            queues[mockIdentifier] ?? [:]
+        }
+    }
+
     /// Clear all queues – basically a reset.
     static func clearQueues(mockIdentifier: UUID) {
         lock.sync {
@@ -196,55 +208,51 @@ final class HTTPMockURLProtocol: URLProtocol {
         path: String,
         query: [String: String]
     ) -> MockResponse? {
-        lock.sync {
-            guard var mockQueues = queues[mockIdentifier] else {
+        var mockQueues = getQueue(for: mockIdentifier)
+
+        // Find the first key matching host+path(+query).
+        let matchingKey = mockQueues.keys.first {
+            matches($0, host: host, path: path, query: query)
+        }
+
+        if let matchingKey {
+            guard var queue = mockQueues[matchingKey], !queue.isEmpty else {
                 return nil
             }
 
-            // Find the first key matching host+path(+query).
-            let matchingKey = mockQueues.keys.first {
-                matches($0, host: host, path: path, query: query)
-            }
-
-            if let matchingKey {
-                guard var queue = mockQueues[matchingKey], !queue.isEmpty else {
-                    return nil
-                }
-
-                let first = queue.removeFirst()
-                switch first.lifetime {
-                case .single:
+            let first = queue.removeFirst()
+            switch first.lifetime {
+            case .single:
+                mockQueues[matchingKey] = queue
+                queues[mockIdentifier] = mockQueues
+            case .multiple(let count):
+                switch count {
+                case _ where count < 0, 0:
+                    // Ignore this mock if lifetime count is at, or below, 0.
                     mockQueues[matchingKey] = queue
-                    queues[mockIdentifier] = mockQueues
-                case .multiple(let count):
-                    switch count {
-                    case _ where count < 0, 0:
-                        // Ignore this mock if lifetime count is at, or below, 0.
-                        mockQueues[matchingKey] = queue
-                        queues[mockIdentifier] = mockQueues
-                        return nil
-                    case 1:
-                        mockQueues[matchingKey] = queue
-                        queues[mockIdentifier] = mockQueues
-                    default:
-                        let copy = first.copyWithNewLifetime(.multiple(count - 1))
-                        mockQueues[matchingKey] = [copy] + queue
-                        queues[mockIdentifier] = mockQueues
-                        HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
-                        return copy
-                    }
-                case .eternal:
-                    return first
+                    setQueue(for: mockIdentifier, mockQueues)
+                    return nil
+                case 1:
+                    mockQueues[matchingKey] = queue
+                    setQueue(for: mockIdentifier, mockQueues)
+                default:
+                    let copy = first.copyWithNewLifetime(.multiple(count - 1))
+                    mockQueues[matchingKey] = [copy] + queue
+                    setQueue(for: mockIdentifier, mockQueues)
+                    HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
+                    return copy
                 }
-
-                if queue.isEmpty {
-                    HTTPMockLog.info("Queue now depleted for \(mockKeyDescription(matchingKey))")
-                }
-
+            case .eternal:
                 return first
             }
-            return nil
+
+            if queue.isEmpty {
+                HTTPMockLog.info("Queue now depleted for \(mockKeyDescription(matchingKey))")
+            }
+
+            return first
         }
+        return nil
     }
 
     private static func matches(
@@ -291,13 +299,10 @@ extension HTTPMockURLProtocol {
         path: String,
         query: [String: String]
     ) -> Int {
-        lock.sync {
-            guard let mockQueues = queues[mockIdentifier] else { return 0 }
-            return mockQueues
-                .filter { matches($0.key, host: host, path: path, query: query) }
-                .map(\.value.count)
-                .first ?? 0
-        }
+        getQueue(for: mockIdentifier)
+            .filter { matches($0.key, host: host, path: path, query: query) }
+            .map(\.value.count)
+            .first ?? 0
     }
 
     private static func describeQuery(
