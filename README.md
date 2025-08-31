@@ -2,6 +2,21 @@
     <img width="1280px" src="assets/logo.png">
 </p>
 
+<p align="center">
+    <!-- Unit Tests CI -->
+    <a href="https://github.com/bstien/HTTPMock/actions/workflows/unit-tests.yml">
+        <img src="https://github.com/bstien/HTTPMock/actions/workflows/unit-tests.yml/badge.svg" alt="Unit Tests">
+    </a>
+    <!-- License -->
+    <a href="https://github.com/bstien/HTTPMock/blob/main/LICENSE">
+        <img src="https://img.shields.io/github/license/bstien/HTTPMock.svg" alt="License">
+    </a>
+    <!-- SwiftPM -->
+    <img src="https://img.shields.io/badge/SwiftPM-compatible-orange.svg" alt="SwiftPM Compatible">
+    <!-- Swift Version -->
+    <img src="https://img.shields.io/badge/Swift-6.0+-brightgreen.svg" alt="Swift 6.0+">
+</p>
+
 A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, zero test servers**. Queue responses for specific hosts/paths (and optional query params), then run your code against a regular `URLSession` that returns exactly what you told it to.
 
 > **Design goals**: simple, explicit and ergonomic for everyday tests or prototyping. No fixtures or external servers. Just say what a request should get back.
