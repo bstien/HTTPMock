@@ -17,7 +17,7 @@ extension HTTPMock {
                     queryItems: registration.queryItems,
                     queryMatching: registration.queryMatching ?? .exact
                 )
-                HTTPMockURLProtocol.add(responses: finalResponses, forKey: key)
+                HTTPMockURLProtocol.add(responses: finalResponses, forKey: key, forMockIdentifier: mockIdentifier)
             }
         }
     }
@@ -38,7 +38,7 @@ extension HTTPMock {
                 queryItems: registration.queryItems,
                 queryMatching: registration.queryMatching ?? .exact
             )
-            HTTPMockURLProtocol.add(responses: finalResponses, forKey: key)
+            HTTPMockURLProtocol.add(responses: finalResponses, forKey: key, forMockIdentifier: mockIdentifier)
         }
     }
 

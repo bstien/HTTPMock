@@ -29,7 +29,8 @@ public final class HTTPMock {
             forHost: defaultDomain,
             path: normalized(path),
             queryItems: queryItems,
-            queryMatching: queryMatching
+            queryMatching: queryMatching,
+            forMockIdentifier: mockIdentifier
         )
     }
 
@@ -46,7 +47,8 @@ public final class HTTPMock {
             forHost: host,
             path: normalized(path),
             queryItems: queryItems,
-            queryMatching: queryMatching
+            queryMatching: queryMatching,
+            forMockIdentifier: mockIdentifier
         )
     }
 
@@ -57,12 +59,12 @@ public final class HTTPMock {
 
     /// Clear all queues – basically a reset.
     public func clearQueues() {
-        HTTPMockURLProtocol.clearQueues()
+        HTTPMockURLProtocol.clearQueues(mockIdentifier: mockIdentifier)
     }
 
     /// Clear the response queue for a single host.
     public func clearQueue(forHost host: String) {
-        HTTPMockURLProtocol.clearQueue(forHost: host)
+        HTTPMockURLProtocol.clearQueue(forHost: host, mockIdentifier: mockIdentifier)
     }
 
     /// Makes sure all paths are prefixed with `/`. We need this for consistency when looking up responses from the queue.
