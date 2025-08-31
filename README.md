@@ -156,6 +156,19 @@ MockResponse.plaintext("served three times", lifetime: .multiple(3))
 MockResponse.plaintext("served forever", lifetime: .eternal)
 ```
 
+## Response delivery
+Each response can optionally be given a `delivery` parameter that controls when the response is delivered to the client. The default value of the parameter is `.instant`.
+
+- `.instant`: The response is delivered immediately (default behavior).
+- `.delayed(TimeInterval)`: The response is delayed and delivered after the specified number of seconds.
+
+Example:
+
+```swift
+MockResponse.plaintext("immediate response", delivery: .instant)
+MockResponse.plaintext("delayed response", delivery: .delayed(2.0)) // delivered after 2 seconds
+```
+
 ## Handling unmocked requests
 By default, unmocked requests return a hardcoded 404 response with a small body. You can configure `HTTPMock.unmockedPolicy` to control this behavior, choosing between returning a 404 or allowing the request to pass through to the real network. The default is `notFound`, aka. the hardoced 404 response.
 
