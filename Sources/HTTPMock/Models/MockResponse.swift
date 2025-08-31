@@ -7,8 +7,9 @@ public struct MockResponse: Hashable {
 
     public let payload: Payload
     public let status: Status
-    public let headers: [String: String]
     public let lifetime: Lifetime
+    public let delivery: Delivery
+    public let headers: [String: String]
 
     // MARK: - Init
 
@@ -16,11 +17,13 @@ public struct MockResponse: Hashable {
         payload: Payload,
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:]
     ) {
         self.payload = payload
         self.status = status
         self.lifetime = lifetime
+        self.delivery = delivery
 
         if let contentType = payload.contentType {
             // Merge the headers, allowing the user to overwrite any we set.
@@ -40,6 +43,7 @@ extension MockResponse {
         _ payload: T,
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:],
         jsonEncoder: JSONEncoder = .mockDefault
     ) throws -> MockResponse {
@@ -48,6 +52,7 @@ extension MockResponse {
             payload: .data(data, contentType: "application/json"),
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers
         )
     }
@@ -56,6 +61,7 @@ extension MockResponse {
         _ payload: [String: Any],
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:]
     ) throws -> MockResponse {
         let data = try JSONSerialization.data(withJSONObject: payload)
@@ -63,6 +69,7 @@ extension MockResponse {
             payload: .data(data, contentType: "application/json"),
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers
         )
     }
@@ -71,6 +78,7 @@ extension MockResponse {
         _ payload: String,
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:]
     ) -> MockResponse {
         let data = Data(payload.utf8)
@@ -78,6 +86,7 @@ extension MockResponse {
             payload: .data(data, contentType: "text/plain"),
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers
         )
     }
@@ -85,12 +94,14 @@ extension MockResponse {
     public static func empty(
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:]
     ) -> MockResponse {
         Self.init(
             payload: .empty,
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers
         )
     }
@@ -111,6 +122,7 @@ extension MockResponse {
         in bundle: Bundle = .main,
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:],
         contentType: String? = nil
     ) -> MockResponse {
@@ -121,6 +133,7 @@ extension MockResponse {
             url: url,
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers,
             contentType: contentType
         )
@@ -138,6 +151,7 @@ extension MockResponse {
         url: URL,
         status: Status = .ok,
         lifetime: Lifetime = .single,
+        delivery: Delivery = .instant,
         headers: [String: String] = [:],
         contentType: String? = nil
     ) -> MockResponse {
@@ -154,6 +168,7 @@ extension MockResponse {
             payload: .data(data, contentType: contentType),
             status: status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: headers
         )
     }
@@ -195,6 +210,7 @@ extension MockResponse {
             payload: self.payload,
             status: self.status,
             lifetime: lifetime,
+            delivery: delivery,
             headers: extra.mergedInOther(self.headers)
         )
     }
@@ -204,6 +220,7 @@ extension MockResponse {
             payload: payload,
             status: status,
             lifetime: newLifetime,
+            delivery: delivery,
             headers: headers
         )
     }
