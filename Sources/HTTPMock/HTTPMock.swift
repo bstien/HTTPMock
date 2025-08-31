@@ -6,8 +6,8 @@ public final class HTTPMock {
     public var defaultDomain = "example.com"
 
     public var unmockedPolicy: UnmockedPolicy {
-        get { HTTPMockURLProtocol.unmockedPolicy }
-        set { HTTPMockURLProtocol.unmockedPolicy = newValue }
+        get { HTTPMockURLProtocol.getUnmockedPolicy(for: mockIdentifier) }
+        set { HTTPMockURLProtocol.setUnmockedPolicy(for: mockIdentifier, newValue) }
     }
 
     let mockIdentifier: UUID

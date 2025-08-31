@@ -2,37 +2,51 @@ import Foundation
 
 final class HTTPMockURLProtocol: URLProtocol {
     static var queues: [UUID: [Key: [MockResponse]]] = [:]
-    static var unmockedPolicy: UnmockedPolicy = .notFound
+
+    private static var unmockedPolicyStorage: [UUID: UnmockedPolicy] = [:]
     private static let handledKey = "HTTPMockHandled"
-    private static let lock = DispatchQueue(label: "MockURLProtocol.lock")
+    private static let queueLock = DispatchQueue(label: "MockURLProtocol.queueLock")
+    private static let unmockedPolicyLock = DispatchQueue(label: "MockURLProtocol.unmockedPolicyLock")
 
     /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
     private lazy var passthroughSession: URLSession = URLSession(configuration: .ephemeral)
 
     // MARK: - Internal methods
 
+    static func getUnmockedPolicy(for mockIdentifier: UUID) -> UnmockedPolicy {
+        unmockedPolicyLock.sync {
+            unmockedPolicyStorage[mockIdentifier] ?? .notFound
+        }
+    }
+
+    static func setUnmockedPolicy(for mockIdentifier: UUID, _ unmockedPolicy: UnmockedPolicy) {
+        unmockedPolicyLock.sync {
+            unmockedPolicyStorage[mockIdentifier] = unmockedPolicy
+        }
+    }
+
     static func setQueue(for mockIdentifier: UUID, _ queue: [Key: [MockResponse]]) {
-        lock.sync {
+        queueLock.sync {
             queues[mockIdentifier] = queue
         }
     }
 
     static func getQueue(for mockIdentifier: UUID) -> [Key: [MockResponse]] {
-        lock.sync {
+        queueLock.sync {
             queues[mockIdentifier] ?? [:]
         }
     }
 
     /// Clear all queues – basically a reset.
     static func clearQueues(mockIdentifier: UUID) {
-        lock.sync {
+        queueLock.sync {
             queues[mockIdentifier]?.removeAll()
         }
     }
 
     /// Clear the response queue for a single host.
     static func clearQueue(forHost host: String, mockIdentifier: UUID) {
-        lock.sync {
+        queueLock.sync {
             guard let mockQueues = queues[mockIdentifier] else { return }
             queues[mockIdentifier] = mockQueues.filter { $0.key.host != host }
         }
@@ -55,7 +69,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         forKey key: Key,
         forMockIdentifier mockIdentifier: UUID
     ) {
-        lock.sync {
+        queueLock.sync {
             let responses = givenResponses.filter(\.hasValidLifetime)
 
             guard !responses.isEmpty else {
@@ -156,7 +170,7 @@ final class HTTPMockURLProtocol: URLProtocol {
                 DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay, execute: sendResponse)
             }
         } else {
-            switch Self.unmockedPolicy {
+            switch Self.getUnmockedPolicy(for: mockIdentifier) {
             case .notFound:
                 HTTPMockLog.error("No mock found for \(requestDescription) — returning 404")
                 let resp = HTTPURLResponse(
