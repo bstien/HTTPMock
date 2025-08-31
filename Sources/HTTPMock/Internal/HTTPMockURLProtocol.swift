@@ -1,8 +1,7 @@
 import Foundation
 
 final class HTTPMockURLProtocol: URLProtocol {
-    static var queues: [UUID: [Key: [MockResponse]]] = [:]
-
+    private static var queues: [UUID: [Key: [MockResponse]]] = [:]
     private static var unmockedPolicyStorage: [UUID: UnmockedPolicy] = [:]
     private static let handledKey = "HTTPMockHandled"
     private static let queueLock = DispatchQueue(label: "MockURLProtocol.queueLock")
@@ -69,33 +68,31 @@ final class HTTPMockURLProtocol: URLProtocol {
         forKey key: Key,
         forMockIdentifier mockIdentifier: UUID
     ) {
-        queueLock.sync {
-            let responses = givenResponses.filter(\.hasValidLifetime)
+        let responses = givenResponses.filter(\.hasValidLifetime)
 
-            guard !responses.isEmpty else {
-                if givenResponses.isEmpty {
-                    HTTPMockLog.trace("No valid responses provided. Skipping registration.")
-                } else {
-                    HTTPMockLog.trace("\(givenResponses.count) response(s) provided, but none were valid. Skipping registration.")
-                }
-                return
+        guard !responses.isEmpty else {
+            if givenResponses.isEmpty {
+                HTTPMockLog.trace("No valid responses provided. Skipping registration.")
+            } else {
+                HTTPMockLog.trace("\(givenResponses.count) response(s) provided, but none were valid. Skipping registration.")
             }
-
-            var mockQueue = queues[mockIdentifier] ?? [:]
-            var queue = mockQueue[key] ?? []
-
-            // Let user know if they're trying to insert responses after an eternal mock.
-            if queue.contains(where: \.isEternal) {
-                HTTPMockLog.warning("Registering response(s) after an eternal mock for \(mockKeyDescription(key)). These responses will never be served.")
-            }
-
-            queue.append(contentsOf: responses)
-            mockQueue[key] = queue
-            queues[mockIdentifier] = mockQueue
-
-            HTTPMockLog.info("Registered \(responses.count) response(s) for \(mockKeyDescription(key))")
-            HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
+            return
         }
+
+        var mockQueue = getQueue(for: mockIdentifier)
+        var queue = mockQueue[key] ?? []
+
+        // Let user know if they're trying to insert responses after an eternal mock.
+        if queue.contains(where: \.isEternal) {
+            HTTPMockLog.warning("Registering response(s) after an eternal mock for \(mockKeyDescription(key)). These responses will never be served.")
+        }
+
+        queue.append(contentsOf: responses)
+        mockQueue[key] = queue
+        setQueue(for: mockIdentifier, mockQueue)
+
+        HTTPMockLog.info("Registered \(responses.count) response(s) for \(mockKeyDescription(key))")
+        HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
     }
 
     // MARK: - Overrides
@@ -238,7 +235,7 @@ final class HTTPMockURLProtocol: URLProtocol {
             switch first.lifetime {
             case .single:
                 mockQueues[matchingKey] = queue
-                queues[mockIdentifier] = mockQueues
+                setQueue(for: mockIdentifier, mockQueues)
             case .multiple(let count):
                 switch count {
                 case _ where count < 0, 0:
