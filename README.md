@@ -236,7 +236,7 @@ Path("/user") {
 ## Goals
 - [X] Allow for passthrough networking when mock hasn't been registered for the incoming URL.
 - [X] Let user point to a file that should be served.
-- [ ] Set delay on requests.
+- [X] Set delay on requests.
 - [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
 - [ ] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
 - [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.
