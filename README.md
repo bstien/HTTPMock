@@ -23,8 +23,8 @@ A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, 
 
 ## Highlights
 - **Two ways to add mocks**: a **clean DSL** or **single registration methods** — use whichever reads best for your use case.
-- **Singleton API**: `HTTPMock.shared` is the only instance you need. No global state leaks between tests: clear with `clearQueues()`.
-- **Works with real `URLSession`**: inject `HTTPMock.shared.urlSession` into the code under test. 
+- **Instance or singleton**: you can either use the singleton `HTTPMock.shared` or create separate instances with `HTTPMock()`. Different instances have separate response queues.
+- **Provides a real `URLSession`**: inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the code under test. 
 - **Precise matching**: host + path, plus optional **query matching** (`.exact` or `.contains`).
 - **Headers support**: define headers at the host or path, with optional **cascade** to children when using the DSL.
 - **FIFO responses**: queue multiple responses and they'll be served in order.
@@ -35,7 +35,7 @@ A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, 
 Add this package to your test target:
 
 ```swift
-.package(url: "https://github.com/bstien/HTTPMock.git", from: "0.0.1")
+.package(url: "https://github.com/bstien/HTTPMock.git", from: "0.0.3")
 ```
 
 ## Quick start
@@ -193,12 +193,43 @@ HTTPMock.shared.clearQueues()
 HTTPMock.shared.clearQueue(forHost: "domain.com")
 ```
 
+## Singleton vs. separate instances
+You can use the global singleton `HTTPMock.shared` for simplicity in most cases. However, if you need isolated queues to, for example, run parallel tests or maintain different mock configurations you can create separate instances with `HTTPMock()`.
+
+Each instance maintains their own queue and properties, and they have no connection to each other.
+
+Example:
+
+```swift
+// Using the singleton
+HTTPMock.shared.registerResponses {
+    Host("api.example.com") {
+        Path("/user") {
+            MockResponse.plaintext("Hello from singleton!")
+        }
+    }
+}
+let singletonSession = HTTPMock.shared.urlSession
+
+// Using a separate instance.
+let mockInstance = HTTPMock()
+mockInstance.registerResponses {
+    Host("api.example.com") {
+        Path("/user") {
+            MockResponse.plaintext("Hello from instance!")
+        }
+    }
+}
+let instanceSession = mockInstance.urlSession
+```
+
+
 ## FAQs
 **Can I run tests that use `HTTPMock` in parallel?**  
-No, currently only a single instance of `HTTPMock` can exist, so tests must be run sequentially.
+Previously, only a single instance of `HTTPMock` could exist, so tests had to be run sequentially. Now, you can create multiple independent `HTTPMock` instances using `HTTPMock()`, allowing parallel tests or separate mock configurations. The singleton `HTTPMock.shared` still exists for convenience.
 
 **Can I use my own `URLSession`?**  
-Yes — most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` into the component under test.
+Yes — most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the component under test.
 
 **Is order guaranteed?**  
 Yes, per (host, path, [query]) responses are popped in **FIFO** order.
@@ -237,6 +268,6 @@ Path("/user") {
 - [X] Allow for passthrough networking when mock hasn't been registered for the incoming URL.
 - [X] Let user point to a file that should be served.
 - [X] Set delay on requests.
+- [X] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
 - [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
-- [ ] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
 - [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.
