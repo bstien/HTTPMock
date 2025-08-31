@@ -1,7 +1,7 @@
 import Foundation
 
 final class HTTPMockURLProtocol: URLProtocol {
-    static var queues: [Key: [MockResponse]] = [:]
+    static var queues: [UUID: [Key: [MockResponse]]] = [:]
     static var unmockedPolicy: UnmockedPolicy = .notFound
     private static let handledKey = "HTTPMockHandled"
     private static let lock = DispatchQueue(label: "MockURLProtocol.lock")
@@ -12,16 +12,17 @@ final class HTTPMockURLProtocol: URLProtocol {
     // MARK: - Internal methods
 
     /// Clear all queues – basically a reset.
-    static func clearQueues() {
+    static func clearQueues(mockIdentifier: UUID) {
         lock.sync {
-            queues.removeAll()
+            queues[mockIdentifier]?.removeAll()
         }
     }
 
     /// Clear the response queue for a single host.
-    static func clearQueue(forHost host: String) {
+    static func clearQueue(forHost host: String, mockIdentifier: UUID) {
         lock.sync {
-            queues = queues.filter { $0.key.host != host }
+            guard let mockQueues = queues[mockIdentifier] else { return }
+            queues[mockIdentifier] = mockQueues.filter { $0.key.host != host }
         }
     }
 
@@ -30,13 +31,18 @@ final class HTTPMockURLProtocol: URLProtocol {
         forHost host: String,
         path: String,
         queryItems: [String: String]? = nil,
-        queryMatching: QueryMatching = .exact
+        queryMatching: QueryMatching = .exact,
+        forMockIdentifier mockIdentifier: UUID
     ) {
         let key = Key(host: host, path: path, queryItems: queryItems, queryMatching: queryMatching)
-        add(responses: responses, forKey: key)
+        add(responses: responses, forKey: key, forMockIdentifier: mockIdentifier)
     }
 
-    static func add(responses givenResponses: [MockResponse], forKey key: Key) {
+    static func add(
+        responses givenResponses: [MockResponse],
+        forKey key: Key,
+        forMockIdentifier mockIdentifier: UUID
+    ) {
         lock.sync {
             let responses = givenResponses.filter(\.hasValidLifetime)
 
@@ -49,7 +55,8 @@ final class HTTPMockURLProtocol: URLProtocol {
                 return
             }
 
-            var queue = queues[key] ?? []
+            var mockQueue = queues[mockIdentifier] ?? [:]
+            var queue = mockQueue[key] ?? []
 
             // Let user know if they're trying to insert responses after an eternal mock.
             if queue.contains(where: \.isEternal) {
@@ -57,7 +64,8 @@ final class HTTPMockURLProtocol: URLProtocol {
             }
 
             queue.append(contentsOf: responses)
-            queues[key] = queue
+            mockQueue[key] = queue
+            queues[mockIdentifier] = mockQueue
 
             HTTPMockLog.info("Registered \(responses.count) response(s) for \(mockKeyDescription(key))")
             HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
@@ -83,6 +91,13 @@ final class HTTPMockURLProtocol: URLProtocol {
 
     override func startLoading() {
         guard
+            let urlSession = task?.value(forKey: "session") as? URLSession,
+            let mockIdentifier = urlSession.mockIdentifier
+        else {
+            fatalError("Could not find mock identifier for URLSession")
+        }
+
+        guard
             let url = request.url,
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
             let host = components.host
@@ -98,12 +113,12 @@ final class HTTPMockURLProtocol: URLProtocol {
         HTTPMockLog.trace("Handling request → \(requestDescription)")
 
         // Look for, and pop, the next queued response mathing host, path and query params.
-        if let mock = Self.pop(host: host, path: path, query: queryDict) {
+        if let mock = Self.pop(mockIdentifier: mockIdentifier, host: host, path: path, query: queryDict) {
             let sendResponse = { [weak self] in
                 guard let self else { return }
                 do {
                     HTTPMockLog.info("Serving mock for \(host)\(path) (\(self.statusCode(of: mock)))")
-                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(host: host, path: path, query: queryDict))")
+                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(mockIdentifier: mockIdentifier, host: host, path: path, query: queryDict))")
 
                     let response = HTTPURLResponse(
                         url: url,
@@ -176,36 +191,45 @@ final class HTTPMockURLProtocol: URLProtocol {
     // MARK: - Private methods
 
     private static func pop(
+        mockIdentifier: UUID,
         host: String,
         path: String,
         query: [String: String]
     ) -> MockResponse? {
         lock.sync {
+            guard var mockQueues = queues[mockIdentifier] else {
+                return nil
+            }
+
             // Find the first key matching host+path(+query).
-            let matchingKey = queues.keys.first {
+            let matchingKey = mockQueues.keys.first {
                 matches($0, host: host, path: path, query: query)
             }
 
             if let matchingKey {
-                guard var queue = queues[matchingKey], !queue.isEmpty else {
+                guard var queue = mockQueues[matchingKey], !queue.isEmpty else {
                     return nil
                 }
 
                 let first = queue.removeFirst()
                 switch first.lifetime {
                 case .single:
-                    queues[matchingKey] = queue
+                    mockQueues[matchingKey] = queue
+                    queues[mockIdentifier] = mockQueues
                 case .multiple(let count):
                     switch count {
                     case _ where count < 0, 0:
                         // Ignore this mock if lifetime count is at, or below, 0.
-                        queues[matchingKey] = queue
+                        mockQueues[matchingKey] = queue
+                        queues[mockIdentifier] = mockQueues
                         return nil
                     case 1:
-                        queues[matchingKey] = queue
+                        mockQueues[matchingKey] = queue
+                        queues[mockIdentifier] = mockQueues
                     default:
                         let copy = first.copyWithNewLifetime(.multiple(count - 1))
-                        queues[matchingKey] = [copy] + queue
+                        mockQueues[matchingKey] = [copy] + queue
+                        queues[mockIdentifier] = mockQueues
                         HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
                         return copy
                     }
@@ -261,9 +285,15 @@ extension HTTPMockURLProtocol {
         "\(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))"
     }
 
-    private static func queueSize(host: String, path: String, query: [String: String]) -> Int {
+    private static func queueSize(
+        mockIdentifier: UUID,
+        host: String,
+        path: String,
+        query: [String: String]
+    ) -> Int {
         lock.sync {
-            queues
+            guard let mockQueues = queues[mockIdentifier] else { return 0 }
+            return mockQueues
                 .filter { matches($0.key, host: host, path: path, query: query) }
                 .map(\.value.count)
                 .first ?? 0
