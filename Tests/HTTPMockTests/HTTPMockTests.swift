@@ -157,13 +157,13 @@ struct HTTPMockTests {
     }
 
     @Test
-    func itSetsDefaultContentTypeAndAllowsOverride() throws {
+    func itSetsDefaultContentTypeAndAllowsOverride() {
         // `plaintext` default
         let plainText = MockResponse.plaintext("hi")
         #expect(plainText.headers["Content-Type"] == "text/plain")
 
         // `encodable` default
-        let encodable = try MockResponse.encodable(DummyData())
+        let encodable = MockResponse.encodable(DummyData())
         #expect(encodable.headers["Content-Type"] == "application/json")
 
         // Override content type via explicit headers
