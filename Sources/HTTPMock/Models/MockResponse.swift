@@ -46,15 +46,24 @@ extension MockResponse {
         delivery: Delivery = .instant,
         headers: [String: String] = [:],
         jsonEncoder: JSONEncoder = .mockDefault
-    ) throws -> MockResponse {
-        let data = try jsonEncoder.encode(payload)
-        return Self.init(
-            payload: .data(data, contentType: "application/json"),
-            status: status,
-            lifetime: lifetime,
-            delivery: delivery,
-            headers: headers
-        )
+    ) -> MockResponse {
+        do {
+            let data = try jsonEncoder.encode(payload)
+            return Self.init(
+                payload: .data(data, contentType: "application/json"),
+                status: status,
+                lifetime: lifetime,
+                delivery: delivery,
+                headers: headers
+            )
+        } catch {
+            HTTPMockLog.error("""
+            Failed to encode payload to JSON data. Fallback to `.empty()`.
+            Payload: \(payload)
+            Error: \(error)
+            """)
+            return .empty()
+        }
     }
 
     public static func dictionary(
@@ -63,15 +72,24 @@ extension MockResponse {
         lifetime: Lifetime = .single,
         delivery: Delivery = .instant,
         headers: [String: String] = [:]
-    ) throws -> MockResponse {
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        return Self.init(
-            payload: .data(data, contentType: "application/json"),
-            status: status,
-            lifetime: lifetime,
-            delivery: delivery,
-            headers: headers
-        )
+    ) -> MockResponse {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            return Self.init(
+                payload: .data(data, contentType: "application/json"),
+                status: status,
+                lifetime: lifetime,
+                delivery: delivery,
+                headers: headers
+            )
+        } catch {
+            HTTPMockLog.error("""
+            Failed to serialize payload to JSON data. Fallback to `.empty()`.
+            Payload: \(payload)
+            Error: \(error)
+            """)
+            return .empty()
+        }
     }
 
     public static func plaintext(
