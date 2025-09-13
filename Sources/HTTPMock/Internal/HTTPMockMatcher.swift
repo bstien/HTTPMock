@@ -87,14 +87,17 @@ struct HTTPMockMatcher {
             return pattern == value
         }
 
-        // Check if we have a cached pattern already, or create one if not.
-        // If regex compilation fails: fail silently and return `false`.
-        guard let regularExpression = try? expressionStorage.regex(for: pattern, kind: kind) else {
+        do {
+            // Check if we have a cached pattern already, or create one if not.
+            let regularExpression = try expressionStorage.regex(for: pattern, kind: kind)
+
+            let searchRange = NSRange(value.startIndex..<value.endIndex, in: value)
+            return regularExpression.firstMatch(in: value, range: searchRange) != nil
+        } catch {
+            // If regex compilation fails: warn the user and return `false`.
+            HTTPMockLog.warning("Failed to compile regex for pattern '\(pattern)'. This pattern will be ignored and may cause unexpected behavior.\nError: \(error)")
             return false
         }
-
-        let searchRange = NSRange(value.startIndex..<value.endIndex, in: value)
-        return regularExpression.firstMatch(in: value, range: searchRange) != nil
     }
 
     /// Computes a specificity score for a key where the return is a tuple of `(wildcardCount, -literalCount)`.

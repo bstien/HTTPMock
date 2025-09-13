@@ -24,8 +24,8 @@ A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, 
 ## Highlights
 - **Two ways to add mocks**: a **clean DSL** or **single registration methods** — use whichever reads best for your use case.
 - **Instance or singleton**: you can either use the singleton `HTTPMock.shared` or create separate instances with `HTTPMock()`. Different instances have separate response queues.
-- **Provides a real `URLSession`**: inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the code under test. 
-- **Precise matching**: host + path, plus optional **query matching** (`.exact` or `.contains`).
+- **Provides a real `URLSession`**: inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the code under test.
+- **Flexible matching**: exact strings, **wildcard patterns** (`*` and `**`), plus optional **query matching** (`.exact` or `.contains`).
 - **Headers support**: define headers at the host or path, with optional **cascade** to children when using the DSL.
 - **FIFO responses**: queue multiple responses and they'll be served in order.
 - **Passthrough networking**: configure unmocked requests to either return a hardcoded 404 or be passed through to the network.
@@ -122,6 +122,110 @@ Path("/search", query: ["q": "swift"], matching: .contains) {
 }
 ```
 
+## Wildcard patterns
+Both hosts and paths support wildcard matching using glob-style patterns. This is useful for mocking multiple similar endpoints without registering each variation individually.
+
+### Single segment wildcards (`*`)
+Match within a single segment only. Segments are separated by `.` for hosts and `/` for paths.
+
+#### Host wildcards
+```swift
+HTTPMock.shared.registerResponses {
+    Host("*.example.com") { // Single host pattern wildcard.
+        Path("/users") {
+            MockResponse.plaintext("wildcard host")
+        }
+    }
+}
+```
+
+The host pattern (`*.example.com`) matches i.e.:
+- `api.example.com`
+- `staging.example.com`.
+
+Since `*` only matches on a single segment this means the pattern will **NOT** match i.e. `api.staging.example.com`.
+
+#### Path wildcards
+```swift
+HTTPMock.shared.addResponses(
+    forPath: "/api/*/users", // Single path pattern wildcard.
+    host: "api.example.com",
+    responses: [.encodable(users)]
+)
+```
+
+The path pattern (`/api/*/users`) matches i.e.:
+- `/api/v1/users`
+- `/api/v2/users`.
+
+Since `*` only matches on a single segment this means the pattern will **NOT** match i.e. `/api/v1/beta/users`
+
+### Multi-segment wildcards (`**`)
+Match across multiple segments (zero or more). Useful for flexible host/path matching.
+
+#### Multi-segment host wildcards
+```swift
+HTTPMock.shared.registerResponses {
+    Host("**.example.com") {
+        Path("/api/**/data") {
+            MockResponse.plaintext("flexible matching")
+        }
+    }
+}
+```
+
+The host pattern (`**.example.com`) matches i.e.:
+- `api.example.com`
+- `api.staging.example.com`.
+
+The path pattern (`/api/**/data`) matches i.e.:
+- `/api/data`
+- `/api/v1/data`
+- `/api/v1/beta/data`.
+
+#### Complex patterns
+```swift
+HTTPMock.shared.addResponses(
+    forPath: "/api/**/users/*",
+    host: "api-*.example.com",
+    responses: [.encodable(users)]
+)
+```
+
+The combination of host and path pattern will match i.e. `api-staging.example.com/api/v1/beta/users/123`.
+
+### Pattern specificity
+When multiple patterns could match the same request, HTTPMock automatically chooses the most specific:
+
+1. **Exact matches** always win over wildcards.
+2. **Fewer wildcards** beat more wildcards.
+3. **Longer literal content** wins ties.
+
+Given the registered patterns in the code block below, the table explains which pattern(s) would match, and win, on an incoming request.
+
+```swift
+Host("api.example.com")     // exact - highest priority
+Host("*.example.com")       // single wildcard
+Host("**.example.com")      // multi wildcard - lowest priority
+```
+
+| Incoming request | Pattern matches | Winning pattern | Why? |
+| :- | - | - | - |
+| `api.example.com` | Matches on all three registered patterns | The exact pattern | It has no wildcards (lowest score). |
+| `api-test.example.com` | Matches on both the single- and multi wildcard patterns | The single wildcard pattern | It has the fewest wildcards (lowest score). |
+| `api.staging.example.com` | Matches only on the multi wildcard pattern | The multi wildcard pattern | The only pattern that matches. |
+
+#### Specificity tie-breaker
+
+Here's an example to provide more context to the specificity score when a tie between two patterns occurs. Given the registered patterns:
+
+```swift
+Host("*.example.*")         // two single wildcard
+Host("**.example.com")      // multi wildcard
+```
+
+An incoming request to **`api.example.com`** would match on both of the patterns above, but the winning pattern will be the **multi wildcard pattern**. Both patterns have exactly two wildcards, but the multi wildcard pattern has a **longer matching literal** which gives it a higher score.
+
 ## File-based responses
 Serve response data directly from a file on disk. Useful for pre-recorded and/or large responses. Either specify the `Content-Type` manually, or let it be inferred from the file.
 
@@ -131,7 +235,7 @@ HTTPMock.shared.registerResponses {
         Path("/data") {
             // Point to a file in the specified `Bundle`.
             MockResponse.file(named: "response", extension: "json", in: Bundle.main)
-            
+
             // Load the contents of a file from a `URL`.
             MockResponse.file(url: urlToFile)
         }
@@ -177,7 +281,7 @@ By default, unmocked requests return a hardcoded 404 response with a small body.
 HTTPMock.shared.unmockedPolicy = .notFound
 
 // Alternative: let unmocked requests hit the real network.
-// This can be useful if you're doing integration testing and only want to mock certain endpoints. 
+// This can be useful if you're doing integration testing and only want to mock certain endpoints.
 HTTPMock.shared.unmockedPolicy = .passthrough
 ```
 
@@ -226,16 +330,24 @@ let instanceSession = mockInstance.urlSession
 
 ## FAQs
 **Can I run tests that use `HTTPMock` in parallel?**  
-Previously, only a single instance of `HTTPMock` could exist, so tests had to be run sequentially. Now, you can create multiple independent `HTTPMock` instances using `HTTPMock()`, allowing parallel tests or separate mock configurations. The singleton `HTTPMock.shared` still exists for convenience.
+Yes. You can create multiple independent `HTTPMock` instances, which allows for parallel tests or separate mock configurations. If you don't need separate instances you can use the singleton `HTTPMock.shared`.
+
+Be aware that the singleton will exist for the whole duration of the app or tests, so call `HTTPMock.shared.clearQueues()` if you need to reset it.
 
 **Can I use my own `URLSession`?**  
-Yes — most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the component under test.
+Yes. Most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the component under test.
 
 **Is order guaranteed?**  
-Yes, per (host, path, [query]) responses are popped in **FIFO** order.
+Yes. Responses per (host, path, [query]) are queued and popped in **FIFO** order.
 
 **What happens if a request is not mocked?**  
 By default, unmocked requests return a hardcoded "404 Not Found" response. You can configure `HTTPMock`'s `UnmockedPolicy` to instead pass such requests through to the real network, allowing unmocked calls to succeed.
+
+**Can I mix exact and wildcard patterns for the same endpoint?**  
+Yes. You can register multiple patterns that could match the same request. HTTPMock will automatically choose the most specific pattern using a score ranking (exact beats wildcards, fewer wildcards beat more wildcards).
+
+**What characters are supported in wildcard patterns?**  
+Use `*` for single-segment wildcards and `**` for multi-segment wildcards. All other characters are treated as literals. Special regex characters are automatically escaped, so patterns like `api-*.example.com` work as expected.
 
 ## Example response helpers
 These are available as static factory methods on `MockResponse` and can be used directly inside a `Path` or `addResponses` builder:
@@ -269,5 +381,6 @@ Path("/user") {
 - [X] Let user point to a file that should be served.
 - [X] Set delay on requests.
 - [X] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
+- [X] Support wildcard patterns in host and path matching (`*` and `**` glob-style patterns).
 - [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
 - [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.

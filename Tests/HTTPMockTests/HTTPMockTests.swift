@@ -22,7 +22,7 @@ struct HTTPMockTests {
         // Add response using default domain.
         httpMock.addResponses(forPath: "/root", responses: [.empty()])
 
-        let mockKey1 = createMockKey(path: "/root")
+        let mockKey1 = makeKey(path: "/root")
         #expect(mockQueues.count == 1)
         #expect(Set(mockQueues.keys) == Set([mockKey1]))
 
@@ -30,7 +30,7 @@ struct HTTPMockTests {
         httpMock.defaultDomain = "other.example.com"
         httpMock.addResponses(forPath: "/root", responses: [.empty()])
 
-        let mockKey2 = createMockKey(host: "other.example.com", path: "/root")
+        let mockKey2 = makeKey(host: "other.example.com", path: "/root")
         #expect(mockQueues.count == 2)
         #expect(Set(mockQueues.keys) == Set([mockKey1, mockKey2]))
     }
@@ -46,7 +46,7 @@ struct HTTPMockTests {
 
     @Test
     func itDoesNotRegisterTheKeyIfNoResponsesAreProvided() {
-        let key = createMockKey()
+        let key = makeKey()
         httpMock.addResponses([], for: key)
 
         #expect(mockQueues.isEmpty)
@@ -54,7 +54,7 @@ struct HTTPMockTests {
 
     @Test
     func itDoesNotRegisterResponsesWithInvalidLifetimes() {
-        let key = createMockKey()
+        let key = makeKey()
         httpMock.addResponses([
             .empty(lifetime: .multiple(0)),
             .empty(lifetime: .multiple(-1)),
@@ -65,7 +65,7 @@ struct HTTPMockTests {
 
     @Test
     func itAllowsRegisteringResponsesAfterAnEternalResponse() {
-        let key = createMockKey()
+        let key = makeKey()
         httpMock.addResponses([
             .empty(lifetime: .eternal),
             .empty(lifetime: .single),
@@ -93,7 +93,7 @@ struct HTTPMockTests {
 
         httpMock.clearQueue(forHost: "domain.com")
         #expect(mockQueues.count == 1)
-        #expect(mockQueues.first?.key == createMockKey(host: "example.com", path: "/root"))
+        #expect(mockQueues.first?.key == makeKey(host: "example.com", path: "/root"))
     }
 
     @Test
@@ -109,8 +109,8 @@ struct HTTPMockTests {
 
     @Test
     func itStoresAddedResponsesInQueue() {
-        let mockKey1 = createMockKey(path: "/root")
-        let mockKey2 = createMockKey(path: "/root/leaf")
+        let mockKey1 = makeKey(path: "/root")
+        let mockKey2 = makeKey(path: "/root/leaf")
 
         httpMock.addResponse(.empty(), for: mockKey1)
         httpMock.addResponse(.plaintext("Hey!"), for: mockKey2)
@@ -123,7 +123,7 @@ struct HTTPMockTests {
 
     @Test
     func itPopsFromQueueOnRequest() async throws {
-        let mockKey = createMockKey()
+        let mockKey = makeKey()
 
         httpMock.addResponse(.empty(), for: mockKey)
         #expect(mockQueues.count == 1)
@@ -137,7 +137,7 @@ struct HTTPMockTests {
 
     @Test
     func itPopsInFifoOrderForSamePath() async throws {
-        let key = createMockKey(path: "/fifo")
+        let key = makeKey(path: "/fifo")
         httpMock.addResponse(.plaintext("one"), for: key)
         httpMock.addResponse(.plaintext("two"), for: key)
         httpMock.addResponse(.plaintext("three"), for: key)
@@ -188,7 +188,7 @@ struct HTTPMockTests {
         let path = "/search"
 
         // Register a response that matches only exactly these params (no extras)
-        let exactKey = createMockKey(
+        let exactKey = makeKey(
             host: host,
             path: path,
             queryItems: ["q": "swift", "page": "1"],
@@ -213,7 +213,7 @@ struct HTTPMockTests {
         let host = "example.com"
         let path = "/search"
 
-        let containsKey = createMockKey(
+        let containsKey = makeKey(
             host: host,
             path: path,
             queryItems: ["q": "swift"],
@@ -239,7 +239,7 @@ struct HTTPMockTests {
         let host = "example.com"
         let path = "/search"
 
-        let containsKey = createMockKey(
+        let containsKey = makeKey(
             host: host,
             path: path,
             queryItems: ["q": "swift"],
@@ -258,7 +258,7 @@ struct HTTPMockTests {
         let host = "example.com"
         let path = "/search"
 
-        let containsKey = createMockKey(
+        let containsKey = makeKey(
             host: host,
             path: path,
             queryItems: ["q": "swift", "page": "1"],
@@ -292,7 +292,7 @@ struct HTTPMockTests {
         let contents = "{\"hello\":\"world\"}"
         let url = try writeTempFile(named: "fixture", ext: "json", contents: Data(contents.utf8))
 
-        let key = createMockKey(host: host, path: path)
+        let key = makeKey(host: host, path: path)
         httpMock.addResponse(.file(url: url), for: key)
 
         let requestURL = try #require(URL(string: "https://\(host)\(path)"))
@@ -311,7 +311,7 @@ struct HTTPMockTests {
         let contents = "BINARYDATA"
         let url = try writeTempFile(named: "blob", ext: "bin", contents: Data(contents.utf8))
 
-        let key = createMockKey(host: host, path: path)
+        let key = makeKey(host: host, path: path)
         httpMock.addResponse(
             .file(url: url, status: .ok, headers: ["Cache-Control": "no-store"], contentType: "application/custom"),
             for: key
@@ -331,7 +331,7 @@ struct HTTPMockTests {
 
     @Test
     func lifetime_single_isConsumedOnce() async throws {
-        let key = createMockKey(path: "/lifetime-single")
+        let key = makeKey(path: "/lifetime-single")
         httpMock.addResponse(.plaintext("once", lifetime: .single), for: key)
         #expect(mockQueues[key]?.count == 1)
 
@@ -350,7 +350,7 @@ struct HTTPMockTests {
 
     @Test
     func lifetime_multiple_isConsumedNTimes_thenRemoved() async throws {
-        let key = createMockKey(path: "/lifetime-multi")
+        let key = makeKey(path: "/lifetime-multi")
         httpMock.addResponse(.plaintext("multi", lifetime: .multiple(3)), for: key)
         #expect(mockQueues[key]?.count == 1)
 
@@ -374,7 +374,7 @@ struct HTTPMockTests {
 
     @Test
     func lifetime_eternal_isNeverRemoved() async throws {
-        let key = createMockKey(path: "/lifetime-eternal")
+        let key = makeKey(path: "/lifetime-eternal")
         httpMock.addResponse(.plaintext("eternal", lifetime: .eternal), for: key)
         #expect(mockQueues[key]?.count == 1)
 
@@ -393,7 +393,7 @@ struct HTTPMockTests {
 
     @Test
     func delivery_immediate_returnsQuickly() async throws {
-        let key = createMockKey(path: "/delay-immediate")
+        let key = makeKey(path: "/delay-immediate")
         httpMock.addResponse(.plaintext("ok", delivery: .instant), for: key)
 
         let url = try #require(URL(string: "https://example.com/delay-immediate"))
@@ -410,7 +410,7 @@ struct HTTPMockTests {
 
     @Test
     func delivery_delayed_respectsInterval() async throws {
-        let key = createMockKey(path: "/delay-300ms")
+        let key = makeKey(path: "/delay-300ms")
         httpMock.addResponse(.plaintext("slow", delivery: .delayed(0.3)), for: key)
 
         let url = try #require(URL(string: "https://example.com/delay-300ms"))
@@ -427,7 +427,7 @@ struct HTTPMockTests {
 
     @Test
     func delivery_appliesPerResponse_inFifoOrder() async throws {
-        let key = createMockKey(path: "/delay-sequence")
+        let key = makeKey(path: "/delay-sequence")
         httpMock.addResponse(.plaintext("requested-first-but-delivered-second", delivery: .delayed(0.5)), for: key)
         httpMock.addResponse(.plaintext("requested-second-but-delivered-first", delivery: .instant), for: key)
 
@@ -545,5 +545,19 @@ struct HTTPMockTests {
         try? FileManager.default.removeItem(at: url)
         try contents.write(to: url, options: .atomic)
         return url
+    }
+
+    private func makeKey(
+        host: String = "example.com",
+        path: String = "/",
+        queryItems: [String : String]? = nil,
+        queryMatching: QueryMatching = .exact
+    ) -> HTTPMockURLProtocol.Key {
+        HTTPMockURLProtocol.Key(
+            host: host,
+            path: path,
+            queryItems: queryItems,
+            queryMatching: queryMatching
+        )
     }
 }
