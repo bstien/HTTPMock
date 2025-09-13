@@ -3,6 +3,7 @@ import Foundation
 public final class HTTPMock {
     public static let shared = HTTPMock()
     public let urlSession: URLSession
+    public let passthroughSession: URLSession
     public var defaultDomain = "example.com"
 
     public var unmockedPolicy: UnmockedPolicy {
@@ -16,9 +17,13 @@ public final class HTTPMock {
         self.init(identifier: UUID())
     }
 
-    required init(identifier mockIdentifier: UUID) {
+    required init(
+        identifier mockIdentifier: UUID,
+        passthroughSession: URLSession? = nil
+    ) {
         self.mockIdentifier = mockIdentifier
         urlSession = URLSession.identifiedSession(with: mockIdentifier)
+        self.passthroughSession = passthroughSession ?? URLSession(configuration: .ephemeral)
     }
 
     /// Queue responses for a given path (e.g. "/some-path") for host in `defaultDomain`. Each request will pop the next response.
