@@ -340,6 +340,27 @@ func testMyFeature() {
 
 Passthrough is useful for integration-style tests where only some endpoints need mocking, but it is not recommended for strict unit tests.
 
+### Custom passthrough sessions
+When using `.passthrough` policy you can provide a custom `URLSession` for handling unmocked requests. This allows you to configure timeouts, caching policies, and other networking behavior for passthrough requests.
+
+**Note:** By using `.passthrough` any unmocked requests will be sent to actual network. If this isn't your intention: either set `unmockedPolicy` to another value or configure and pass your own `URLSession` when instantiating HTTPMock.
+
+```swift
+// Create a custom configuration for passthrough requests
+let config = URLSessionConfiguration.default
+config.timeoutIntervalForRequest = 10.0
+config.timeoutIntervalForResource = 30.0
+let passthroughSession = URLSession(configuration: config)
+
+// Use it when creating HTTPMock instance
+let httpMock = HTTPMock(passthroughSession: passthroughSession)
+httpMock.unmockedPolicy = .passthrough
+
+// Unmocked requests will now use your custom session configuration
+```
+
+If you don't provide a custom passthrough session, HTTPMock uses a default ephemeral session. Each HTTPMock instance maintains its own isolated passthrough session, so multiple instances can have different passthrough configurations.
+
 ## Resetting between tests
 Use these in `tearDown()` or in individual tests:
 ```swift
@@ -404,6 +425,9 @@ Use `*` for single-segment wildcards and `**` for multi-segment wildcards. All o
 
 **Can I customize what happens when no mock is found?**  
 Yes. Use `HTTPMock.unmockedPolicy` to choose between `.notFound` (hardcoded 404), `.passthrough` (real network), `.mock(MockResponse)` (your custom response), or `.fatalError` (crash on unmocked requests). The custom option supports all `MockResponse` features, while `.fatalError` is useful for strict testing to catch missing mocks.
+
+**Can I customize the URLSession used for passthrough requests?**  
+Yes. When creating an `HTTPMock` instance, you can provide a custom `passthroughSession` parameter with your own `URLSession` configuration. This allows you to control timeouts, caching policies, and other networking behavior for unmocked requests when using `.passthrough` policy. Each HTTPMock instance maintains its own isolated passthrough session.
 
 ## Example response helpers
 These are available as static factory methods on `MockResponse` and can be used directly inside a `Path` or `addResponses` builder:

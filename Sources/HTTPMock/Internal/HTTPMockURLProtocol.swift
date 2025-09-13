@@ -3,13 +3,12 @@ import Foundation
 final class HTTPMockURLProtocol: URLProtocol {
     private static var queues: [UUID: [Key: [MockResponse]]] = [:]
     private static var unmockedPolicyStorage: [UUID: UnmockedPolicy] = [:]
+    private static var passthroughSessions: [UUID: URLSession] = [:]
     private static let matcher = HTTPMockMatcher()
     private static let handledKey = "HTTPMockHandled"
     private static let queueLock = DispatchQueue(label: "MockURLProtocol.queueLock")
     private static let unmockedPolicyLock = DispatchQueue(label: "MockURLProtocol.unmockedPolicyLock")
-
-    /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
-    private lazy var passthroughSession = URLSession(configuration: .ephemeral)
+    private static let passthroughSessionsLock = DispatchQueue(label: "MockURLProtocol.passthroughSessionsLock")
 
     /// **Do not use**. This property is shared between all `HTTPMock` instances and will be set to `nil` after each unmocked call that uses
     /// the `UnmockedPolicy.fatalError`. This property only exists to be able to test the functionality.
@@ -38,6 +37,18 @@ final class HTTPMockURLProtocol: URLProtocol {
     static func getQueue(for mockIdentifier: UUID) -> [Key: [MockResponse]] {
         queueLock.sync {
             queues[mockIdentifier] ?? [:]
+        }
+    }
+
+    static func setPassthroughSession(for mockIdentifier: UUID, _ session: URLSession) {
+        passthroughSessionsLock.sync {
+            passthroughSessions[mockIdentifier] = session
+        }
+    }
+
+    static func getPassthroughSession(for mockIdentifier: UUID) -> URLSession? {
+        passthroughSessionsLock.sync {
+            passthroughSessions[mockIdentifier]
         }
     }
 
@@ -189,6 +200,11 @@ final class HTTPMockURLProtocol: URLProtocol {
 
             case .passthrough:
                 HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — passthrough to network")
+
+                guard let passthroughSession = Self.getPassthroughSession(for: mockIdentifier) else {
+                    fatalError("Could not get passthrough session for mock identifier '\(mockIdentifier)'")
+                }
+
                 var request = request
 
                 // Set known value on request to prevent handling the same request multiple times.
