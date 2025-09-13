@@ -11,6 +11,10 @@ final class HTTPMockURLProtocol: URLProtocol {
     /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
     private lazy var passthroughSession = URLSession(configuration: .ephemeral)
 
+    /// **Do not use**. This property is shared between all `HTTPMock` instances and will be set to `nil` after each unmocked call that uses
+    /// the `UnmockedPolicy.fatalError`. This property only exists to be able to test the functionality.
+    static var fatalErrorClosure: (() -> Void)?
+
     // MARK: - Internal methods
 
     static func getUnmockedPolicy(for mockIdentifier: UUID) -> UnmockedPolicy {
@@ -209,6 +213,25 @@ final class HTTPMockURLProtocol: URLProtocol {
                     self.client?.urlProtocolDidFinishLoading(self)
                 }
                 task.resume()
+
+            case .fatalError:
+                HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — performing a fatalError")
+
+                if let fatalErrorClosure = Self.fatalErrorClosure {
+                    // Call the closure and reset it to avoid interfering other tests.
+                    fatalErrorClosure()
+                    Self.fatalErrorClosure = nil
+
+                    // Send a default blank response so the tests don't wait indefinitely.
+                    sendResponse(
+                        url: url,
+                        statusCode: 200,
+                        delivery: .instant,
+                        payload: Data()
+                    )
+                } else {
+                    fatalError("No mock found for incoming request '\(requestDescription)'")
+                }
             }
         }
     }
