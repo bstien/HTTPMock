@@ -134,7 +134,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         let queryDict = components.queryItems.toDictionary
         let requestDescription = Self.requestDescription(host: host, path: path, query: queryDict)
 
-        HTTPMockLog.trace("Handling request → \(requestDescription)")
+        HTTPMockLog.trace("Handling incoming request → '\(requestDescription)'")
 
         // Look for, and pop, the next queued response mathing host, path and query params.
         let match = Self.findAndPopNextMock(
@@ -147,12 +147,15 @@ final class HTTPMockURLProtocol: URLProtocol {
         if let match {
             let key = match.key
             let mock = match.response
+            let keyDescription = Self.keyDescription(key)
+
+            HTTPMockLog.trace("Found mock in queue for matching registration: '\(keyDescription)'")
 
             let sendResponse = { [weak self] in
                 guard let self else { return }
                 do {
-                    HTTPMockLog.info("Serving mock for \(host)\(path) (\(self.statusCode(of: mock)))")
-                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(for: mockIdentifier, key: key))")
+                    HTTPMockLog.info("Serving mock for incoming request \(host)\(path) (\(self.statusCode(of: mock)))")
+                    HTTPMockLog.debug("Remaining queue count for '\(keyDescription)': \(Self.queueSize(for: mockIdentifier, key: key))")
 
                     let response = HTTPURLResponse(
                         url: url,
@@ -166,6 +169,7 @@ final class HTTPMockURLProtocol: URLProtocol {
                     self.client?.urlProtocol(self, didLoad: payload)
                     self.client?.urlProtocolDidFinishLoading(self)
                 } catch {
+                    HTTPMockLog.error("Failed to serve mock for \(host)\(path): \(error)")
                     self.client?.urlProtocol(self, didFailWithError: error)
                 }
             }
@@ -174,13 +178,13 @@ final class HTTPMockURLProtocol: URLProtocol {
             case .instant:
                 sendResponse()
             case .delayed(let delay):
-                HTTPMockLog.info("Delaying response for \(requestDescription) for \(delay) seconds")
+                HTTPMockLog.info("Delaying response for request '\(requestDescription)' for \(delay) seconds")
                 DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay, execute: sendResponse)
             }
         } else {
             switch Self.getUnmockedPolicy(for: mockIdentifier) {
             case .notFound:
-                HTTPMockLog.error("No mock found for \(requestDescription) — returning 404")
+                HTTPMockLog.error("No mock found for request '\(requestDescription)' — returning 404")
                 let resp = HTTPURLResponse(
                     url: url,
                     statusCode: 404,
@@ -281,6 +285,10 @@ final class HTTPMockURLProtocol: URLProtocol {
 extension HTTPMockURLProtocol {
     private func statusCode(of mock: MockResponse) -> Int {
         mock.status.code
+    }
+
+    private static func keyDescription(_ key: Key) -> String {
+        "\(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))"
     }
 
     private static func requestDescription(host: String, path: String, query: [String: String]) -> String {
