@@ -27,8 +27,8 @@ public final class HTTPMock {
     /// Unique identifier for this HTTPMock instance, used to isolate mock queues between different instances.
     let mockIdentifier: UUID
 
-    public convenience init() {
-        self.init(identifier: UUID())
+    public convenience init(passthroughSession: URLSession? = nil) {
+        self.init(identifier: UUID(), passthroughSession: passthroughSession)
     }
 
     required init(
