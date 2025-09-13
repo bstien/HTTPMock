@@ -3,12 +3,13 @@ import Foundation
 final class HTTPMockURLProtocol: URLProtocol {
     private static var queues: [UUID: [Key: [MockResponse]]] = [:]
     private static var unmockedPolicyStorage: [UUID: UnmockedPolicy] = [:]
+    private static let matcher = HTTPMockMatcher()
     private static let handledKey = "HTTPMockHandled"
     private static let queueLock = DispatchQueue(label: "MockURLProtocol.queueLock")
     private static let unmockedPolicyLock = DispatchQueue(label: "MockURLProtocol.unmockedPolicyLock")
 
     /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
-    private lazy var passthroughSession: URLSession = URLSession(configuration: .ephemeral)
+    private lazy var passthroughSession = URLSession(configuration: .ephemeral)
 
     // MARK: - Internal methods
 
@@ -123,7 +124,7 @@ final class HTTPMockURLProtocol: URLProtocol {
         guard
             let url = request.url,
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            let host = components.host
+            let host = components.host?.lowercased()
         else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
@@ -136,12 +137,22 @@ final class HTTPMockURLProtocol: URLProtocol {
         HTTPMockLog.trace("Handling request → \(requestDescription)")
 
         // Look for, and pop, the next queued response mathing host, path and query params.
-        if let mock = Self.pop(mockIdentifier: mockIdentifier, host: host, path: path, query: queryDict) {
+        let match = Self.findAndPopNextMock(
+            for: mockIdentifier,
+            host: host,
+            path: path,
+            query: queryDict
+        )
+
+        if let match {
+            let key = match.key
+            let mock = match.response
+
             let sendResponse = { [weak self] in
                 guard let self else { return }
                 do {
                     HTTPMockLog.info("Serving mock for \(host)\(path) (\(self.statusCode(of: mock)))")
-                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(mockIdentifier: mockIdentifier, host: host, path: path, query: queryDict))")
+                    HTTPMockLog.debug("Remaining queue for \(requestDescription): \(Self.queueSize(for: mockIdentifier, key: key))")
 
                     let response = HTTPURLResponse(
                         url: url,
@@ -213,18 +224,16 @@ final class HTTPMockURLProtocol: URLProtocol {
 
     // MARK: - Private methods
 
-    private static func pop(
-        mockIdentifier: UUID,
+    private static func findAndPopNextMock(
+        for mockIdentifier: UUID,
         host: String,
         path: String,
         query: [String: String]
-    ) -> MockResponse? {
+    ) -> MockMatch? {
         var mockQueues = getQueue(for: mockIdentifier)
 
         // Find the first key matching host+path(+query).
-        let matchingKey = mockQueues.keys.first {
-            matches($0, host: host, path: path, query: query)
-        }
+        let matchingKey = matcher.match(host: host, path: path, queryItems: query, in: Set(mockQueues.keys))
 
         if let matchingKey {
             guard var queue = mockQueues[matchingKey], !queue.isEmpty else {
@@ -251,41 +260,19 @@ final class HTTPMockURLProtocol: URLProtocol {
                     mockQueues[matchingKey] = [copy] + queue
                     setQueue(for: mockIdentifier, mockQueues)
                     HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
-                    return copy
+                    return MockMatch(key: matchingKey, response: copy)
                 }
             case .eternal:
-                return first
+                return MockMatch(key: matchingKey, response: first)
             }
 
             if queue.isEmpty {
                 HTTPMockLog.info("Queue now depleted for \(mockKeyDescription(matchingKey))")
             }
 
-            return first
+            return MockMatch(key: matchingKey, response: first)
         }
         return nil
-    }
-
-    private static func matches(
-        _ key: Key,
-        host: String,
-        path: String,
-        query: [String: String]
-    ) -> Bool {
-        guard key.host == host, key.path == path else {
-            return false
-        }
-
-        guard let requiredQueryItems = key.queryItems, !requiredQueryItems.isEmpty else {
-            return true
-        }
-
-        switch key.queryMatching {
-        case .exact:
-            return requiredQueryItems == query
-        case .contains:
-            return requiredQueryItems.allSatisfy { (k, v) in query[k] == v }
-        }
     }
 }
 
@@ -304,16 +291,9 @@ extension HTTPMockURLProtocol {
         "\(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))"
     }
 
-    private static func queueSize(
-        mockIdentifier: UUID,
-        host: String,
-        path: String,
-        query: [String: String]
-    ) -> Int {
-        getQueue(for: mockIdentifier)
-            .filter { matches($0.key, host: host, path: path, query: query) }
-            .map(\.value.count)
-            .first ?? 0
+    private static func queueSize(for mockIdentifier: UUID, key: Key) -> Int {
+        let queue = getQueue(for: mockIdentifier)
+        return queue[key]?.count ?? 0
     }
 
     private static func describeQuery(
