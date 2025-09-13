@@ -235,7 +235,7 @@ HTTPMock.shared.registerResponses {
         Path("/data") {
             // Point to a file in the specified `Bundle`.
             MockResponse.file(named: "response", extension: "json", in: Bundle.main)
-            
+
             // Load the contents of a file from a `URL`.
             MockResponse.file(url: urlToFile)
         }
@@ -281,7 +281,7 @@ By default, unmocked requests return a hardcoded 404 response with a small body.
 HTTPMock.shared.unmockedPolicy = .notFound
 
 // Alternative: let unmocked requests hit the real network.
-// This can be useful if you're doing integration testing and only want to mock certain endpoints. 
+// This can be useful if you're doing integration testing and only want to mock certain endpoints.
 HTTPMock.shared.unmockedPolicy = .passthrough
 ```
 
