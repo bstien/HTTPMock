@@ -11,6 +11,10 @@ final class HTTPMockURLProtocol: URLProtocol {
     /// A plain session without `HTTPMockURLProtocol` to support passthrough of requests when policy requires it.
     private lazy var passthroughSession = URLSession(configuration: .ephemeral)
 
+    /// **Do not use**. This property is shared between all `HTTPMock` instances and will be set to `nil` after each unmocked call that uses
+    /// the `UnmockedPolicy.fatalError`. This property only exists to be able to test the functionality.
+    static var fatalErrorClosure: (() -> Void)?
+
     // MARK: - Internal methods
 
     static func getUnmockedPolicy(for mockIdentifier: UUID) -> UnmockedPolicy {
@@ -152,51 +156,39 @@ final class HTTPMockURLProtocol: URLProtocol {
             HTTPMockLog.trace("Found mock in queue for matching registration: '\(keyDescription)'")
             HTTPMockLog.debug("Remaining queue count for '\(keyDescription)': \(Self.queueSize(for: mockIdentifier, key: key))")
 
-            let sendResponse = { [weak self] in
-                guard let self else { return }
-                do {
-                    HTTPMockLog.info("Serving mock for incoming request \(host)\(path) (\(self.statusCode(of: mock)))")
-
-                    let response = HTTPURLResponse(
-                        url: url,
-                        statusCode: mock.status.code,
-                        httpVersion: "HTTP/1.1",
-                        headerFields: mock.headers
-                    )!
-
-                    let payload = try mock.payloadData()
-                    self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                    self.client?.urlProtocol(self, didLoad: payload)
-                    self.client?.urlProtocolDidFinishLoading(self)
-                } catch {
-                    HTTPMockLog.error("Failed to serve mock for \(host)\(path): \(error)")
-                    self.client?.urlProtocol(self, didFailWithError: error)
-                }
-            }
-
-            switch mock.delivery {
-            case .instant:
-                sendResponse()
-            case .delayed(let delay):
-                HTTPMockLog.info("Delaying response for request '\(requestDescription)' for \(delay) seconds")
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay, execute: sendResponse)
-            }
+            sendResponse(
+                url: url,
+                statusCode: mock.status.code,
+                headers: mock.headers,
+                delivery: mock.delivery,
+                payload: try mock.payloadData()
+            )
         } else {
             switch Self.getUnmockedPolicy(for: mockIdentifier) {
             case .notFound:
-                HTTPMockLog.error("No mock found for request '\(requestDescription)' — returning 404")
-                let response = HTTPURLResponse(
+                HTTPMockLog.error("No mock found for incoming request '\(requestDescription)' — returning hardcoded 404 response")
+
+                sendResponse(
                     url: url,
                     statusCode: 404,
-                    httpVersion: "HTTP/1.1",
-                    headerFields: ["Content-Type": "text/plain"]
-                )!
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: Data("No mock for \(host)\(path)".utf8))
-                client?.urlProtocolDidFinishLoading(self)
+                    headers: ["Content-Type": "text/plain"],
+                    delivery: .instant,
+                    payload: Data("No mock for \(host)\(path)".utf8)
+                )
+
+            case .mock(let mock):
+                HTTPMockLog.error("No mock found for incoming request '\(requestDescription)' — returning user-defined mock")
+
+                sendResponse(
+                    url: url,
+                    statusCode: mock.status.code,
+                    headers: mock.headers,
+                    delivery: mock.delivery,
+                    payload: try mock.payloadData()
+                )
 
             case .passthrough:
-                HTTPMockLog.info("No mock found for \(requestDescription) — passthrough to network")
+                HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — passthrough to network")
                 var request = request
 
                 // Set known value on request to prevent handling the same request multiple times.
@@ -221,6 +213,25 @@ final class HTTPMockURLProtocol: URLProtocol {
                     self.client?.urlProtocolDidFinishLoading(self)
                 }
                 task.resume()
+
+            case .fatalError:
+                HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — performing a fatalError")
+
+                if let fatalErrorClosure = Self.fatalErrorClosure {
+                    // Call the closure and reset it to avoid interfering other tests.
+                    fatalErrorClosure()
+                    Self.fatalErrorClosure = nil
+
+                    // Send a default blank response so the tests don't wait indefinitely.
+                    sendResponse(
+                        url: url,
+                        statusCode: 200,
+                        delivery: .instant,
+                        payload: Data()
+                    )
+                } else {
+                    fatalError("No mock found for incoming request '\(requestDescription)'")
+                }
             }
         }
     }
@@ -230,6 +241,47 @@ final class HTTPMockURLProtocol: URLProtocol {
     }
 
     // MARK: - Private methods
+
+    private func sendResponse(
+        url: URL,
+        statusCode: Int,
+        headers: [String: String] = [:],
+        delivery: MockResponse.Delivery,
+        payload: @escaping @autoclosure () throws -> Data
+    ) {
+        let performDelivery: (Data) -> Void = { [weak self] payload in
+            guard let self else { return }
+            HTTPMockLog.info("Delivering response with status code \(statusCode) for '\(url.absoluteString)'")
+
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: statusCode,
+                httpVersion: "HTTP/1.1",
+                headerFields: headers
+            )!
+
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: payload)
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+
+        do {
+            let payloadData = try payload()
+
+            switch delivery {
+            case .instant:
+                performDelivery(payloadData)
+            case .delayed(let delay):
+                HTTPMockLog.info("Delaying response for request '\(url.absoluteString)` for \(delay) seconds")
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay) {
+                    performDelivery(payloadData)
+                }
+            }
+        } catch {
+            HTTPMockLog.error("Failed to encode payload for '\(url.absoluteString)`: \(error)")
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
 
     private static func findAndPopNextMock(
         for mockIdentifier: UUID,

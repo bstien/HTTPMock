@@ -274,7 +274,7 @@ MockResponse.plaintext("delayed response", delivery: .delayed(2.0)) // delivered
 ```
 
 ## Handling unmocked requests
-By default, unmocked requests return a hardcoded 404 response with a small body. You can configure `HTTPMock.unmockedPolicy` to control this behavior, choosing between returning a 404 or allowing the request to pass through to the real network. The default is `notFound`, aka. the hardoced 404 response.
+By default, unmocked requests return a hardcoded 404 response with a small body. You can configure `HTTPMock.unmockedPolicy` to control this behavior with four options:
 
 ```swift
 // Default: return a hardcoded 404 response when no mock is registered for the incoming URL.
@@ -283,7 +283,60 @@ HTTPMock.shared.unmockedPolicy = .notFound
 // Alternative: let unmocked requests hit the real network.
 // This can be useful if you're doing integration testing and only want to mock certain endpoints.
 HTTPMock.shared.unmockedPolicy = .passthrough
+
+// Custom: provide your own MockResponse for unmocked requests
+HTTPMock.shared.unmockedPolicy = .mock(.plaintext("Service temporarily unavailable", status: .other(503)))
+
+// Fatal: trigger a fatalError for unmocked requests (strict testing mode)
+HTTPMock.shared.unmockedPolicy = .fatalError
 ```
+
+### Custom unmocked responses
+The `.mock(MockResponse)` option allows you to define exactly what unmocked requests should return. This is useful for simulating service outages, maintenance modes, or providing consistent fallback responses during testing.
+
+```swift
+// Simple custom response
+HTTPMock.shared.unmockedPolicy = .mock(.plaintext("API is down for maintenance", status: .other(503)))
+
+// JSON error response with headers
+HTTPMock.shared.unmockedPolicy = .mock(
+    .dictionary(
+        ["error": "endpoint_not_found", "code": 404], 
+        status: .notFound, 
+        headers: ["X-Error-Source": "HTTPMock"]
+    )
+)
+
+// File-based fallback response
+HTTPMock.shared.unmockedPolicy = .mock(.file(named: "fallback", extension: "json", in: Bundle.main))
+
+// Delayed response to simulate slow networks
+HTTPMock.shared.unmockedPolicy = .mock(.plaintext("Slow response", delivery: .delayed(2.0)))
+```
+
+**Note:** Custom unmocked responses support all `MockResponse` features (status codes, headers, delivery timing, file serving), but they don't maintain queue state like regular mocked responses. The `MockResponse` provided here will be used for all subsequent incoming unmocked requests. This means the **`lifetime` property is NOT used/honored** for these responses. Consider the `lifetime` to be `MockResponse.Lifetime.eternal`.
+
+### Strict testing with fatalError
+The `.fatalError` option provides the strictest testing mode by triggering a `fatalError()` whenever an unmocked request is encountered. This is useful for:
+
+- **Catching missing mocks** during development.
+- **Ensuring complete test coverage** of all network interactions.
+
+```swift
+// Enable strict mode - any unmocked request will crash the app
+HTTPMock.shared.unmockedPolicy = .fatalError
+
+// Use during test development to find missing mocks:
+func testMyFeature() {
+    HTTPMock.shared.unmockedPolicy = .fatalError
+    
+    // If this test makes any unmocked network requests, it will crash
+    // and tell you exactly which endpoints need mocking.
+    myFeature.performNetworkOperations()
+}
+```
+
+**Warning:** Only use `.fatalError` during development and testing. It will crash your app on unmocked requests.
 
 Passthrough is useful for integration-style tests where only some endpoints need mocking, but it is not recommended for strict unit tests.
 
@@ -349,6 +402,9 @@ Yes. You can register multiple patterns that could match the same request. HTTPM
 **What characters are supported in wildcard patterns?**  
 Use `*` for single-segment wildcards and `**` for multi-segment wildcards. All other characters are treated as literals. Special regex characters are automatically escaped, so patterns like `api-*.example.com` work as expected.
 
+**Can I customize what happens when no mock is found?**  
+Yes. Use `HTTPMock.unmockedPolicy` to choose between `.notFound` (hardcoded 404), `.passthrough` (real network), `.mock(MockResponse)` (your custom response), or `.fatalError` (crash on unmocked requests). The custom option supports all `MockResponse` features, while `.fatalError` is useful for strict testing to catch missing mocks.
+
 ## Example response helpers
 These are available as static factory methods on `MockResponse` and can be used directly inside a `Path` or `addResponses` builder:
 
@@ -382,5 +438,5 @@ Path("/user") {
 - [X] Set delay on requests.
 - [X] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
 - [X] Support wildcard patterns in host and path matching (`*` and `**` glob-style patterns).
-- [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
+- [X] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
 - [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.
