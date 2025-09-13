@@ -24,8 +24,8 @@ A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, 
 ## Highlights
 - **Two ways to add mocks**: a **clean DSL** or **single registration methods** — use whichever reads best for your use case.
 - **Instance or singleton**: you can either use the singleton `HTTPMock.shared` or create separate instances with `HTTPMock()`. Different instances have separate response queues.
-- **Provides a real `URLSession`**: inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the code under test. 
-- **Precise matching**: host + path, plus optional **query matching** (`.exact` or `.contains`).
+- **Provides a real `URLSession`**: inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the code under test.
+- **Flexible matching**: exact strings, **wildcard patterns** (`*` and `**`), plus optional **query matching** (`.exact` or `.contains`).
 - **Headers support**: define headers at the host or path, with optional **cascade** to children when using the DSL.
 - **FIFO responses**: queue multiple responses and they'll be served in order.
 - **Passthrough networking**: configure unmocked requests to either return a hardcoded 404 or be passed through to the network.
@@ -373,5 +373,6 @@ Path("/user") {
 - [X] Let user point to a file that should be served.
 - [X] Set delay on requests.
 - [X] Create separate instances of `HTTPMock`. The current single instance requires tests to be run in sequence, instead of parallel.
+- [X] Support wildcard patterns in host and path matching (`*` and `**` glob-style patterns).
 - [ ] Let user configure a default "not found" response. Will be used either when no matching mocks are found or if queue is empty.
 - [ ] Does arrays in query parameters work? I think they're being overwritten with the current setup.
