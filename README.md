@@ -330,16 +330,24 @@ let instanceSession = mockInstance.urlSession
 
 ## FAQs
 **Can I run tests that use `HTTPMock` in parallel?**  
-Previously, only a single instance of `HTTPMock` could exist, so tests had to be run sequentially. Now, you can create multiple independent `HTTPMock` instances using `HTTPMock()`, allowing parallel tests or separate mock configurations. The singleton `HTTPMock.shared` still exists for convenience.
+Yes. You can create multiple independent `HTTPMock` instances, which allows for parallel tests or separate mock configurations. If you don't need separate instances you can use the singleton `HTTPMock.shared`.
+
+Be aware that the singleton will exist for the whole duration of the app or tests, so call `HTTPMock.shared.clearQueues()` if you need to reset it.
 
 **Can I use my own `URLSession`?**  
-Yes — most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the component under test.
+Yes. Most tests just use `HTTPMock.shared.urlSession`. If your code constructs its own session, inject `HTTPMock.shared.urlSession` or your own instance's `urlSession` into the component under test.
 
 **Is order guaranteed?**  
-Yes, per (host, path, [query]) responses are popped in **FIFO** order.
+Yes. Responses per (host, path, [query]) are queued and popped in **FIFO** order.
 
 **What happens if a request is not mocked?**  
 By default, unmocked requests return a hardcoded "404 Not Found" response. You can configure `HTTPMock`'s `UnmockedPolicy` to instead pass such requests through to the real network, allowing unmocked calls to succeed.
+
+**Can I mix exact and wildcard patterns for the same endpoint?**  
+Yes. You can register multiple patterns that could match the same request. HTTPMock will automatically choose the most specific pattern using a score ranking (exact beats wildcards, fewer wildcards beat more wildcards).
+
+**What characters are supported in wildcard patterns?**  
+Use `*` for single-segment wildcards and `**` for multi-segment wildcards. All other characters are treated as literals. Special regex characters are automatically escaped, so patterns like `api-*.example.com` work as expected.
 
 ## Example response helpers
 These are available as static factory methods on `MockResponse` and can be used directly inside a `Path` or `addResponses` builder:
