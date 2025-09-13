@@ -34,8 +34,8 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues = [
-            createMockKey(host: "domain.com", path: "/"),
-            createMockKey(host: "other-domain.com", path: "/")
+            makeKey(host: "domain.com", path: "/"),
+            makeKey(host: "other-domain.com", path: "/")
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
@@ -55,9 +55,9 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: Set<HTTPMockURLProtocol.Key> = [
-            createMockKey(path: "/root"),
-            createMockKey(path: "/root/child"),
-            createMockKey(path: "/root/child/grand-child"),
+            makeKey(path: "/root"),
+            makeKey(path: "/root/child"),
+            makeKey(path: "/root/child/grand-child"),
         ]
         #expect(mockQueues.count == 3)
         #expect(Set(mockQueues.keys) == expectedQueues)
@@ -98,8 +98,8 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
-            createMockKey(host: "example.com", path: "/"),
-            createMockKey(host: "example.com", path: "/some-other-path")
+            makeKey(host: "example.com", path: "/"),
+            makeKey(host: "example.com", path: "/some-other-path")
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
@@ -113,7 +113,7 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
-            createMockKey(path: "/root")
+            makeKey(path: "/root")
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
@@ -166,11 +166,11 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
-            createMockKey(host: "a", path: "/"),
-            createMockKey(host: "b", path: "/"),
-            createMockKey(host: "c", path: "/"),
-            createMockKey(host: "d", path: "/root"),
-            createMockKey(host: "e", path: "/root//////roooooot"),
+            makeKey(host: "a", path: "/"),
+            makeKey(host: "b", path: "/"),
+            makeKey(host: "c", path: "/"),
+            makeKey(host: "d", path: "/root"),
+            makeKey(host: "e", path: "/root//////roooooot"),
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
@@ -190,7 +190,7 @@ struct HTTPMockResultBuilderTests {
         }
 
         let expectedQueues: [HTTPMockURLProtocol.Key] = [
-            createMockKey(path: "/")
+            makeKey(path: "/")
         ]
         #expect(Set(mockQueues.keys) == Set(expectedQueues))
     }
@@ -269,7 +269,7 @@ struct HTTPMockResultBuilderTests {
             }
         }
 
-        let resp = try #require(mockQueues[createMockKey(host: "example.com", path: "/conflict")]?.first)
+        let resp = try #require(mockQueues[makeKey(host: "example.com", path: "/conflict")]?.first)
         #expect(resp.headers["X-Shared"] == "response")
     }
 
@@ -296,7 +296,7 @@ struct HTTPMockResultBuilderTests {
             }
         }
 
-        let resp = try #require(mockQueues[createMockKey(path: "/pos")]?.first)
+        let resp = try #require(mockQueues[makeKey(path: "/pos")]?.first)
         #expect(resp.headers == ["K": "V"]) // Still applied
     }
 
@@ -360,5 +360,21 @@ struct HTTPMockResultBuilderTests {
         let (data2, response2) = try await httpMock.urlSession.data(from: url2)
         #expect(response2.httpStatusCode == 200)
         #expect(data2.toString == "ok-contains-2")
+    }
+
+    // MARK: - Helpers
+
+    private func makeKey(
+        host: String = "example.com",
+        path: String = "/",
+        queryItems: [String : String]? = nil,
+        queryMatching: QueryMatching = .exact
+    ) -> HTTPMockURLProtocol.Key {
+        HTTPMockURLProtocol.Key(
+            host: host,
+            path: path,
+            queryItems: queryItems,
+            queryMatching: queryMatching
+        )
     }
 }

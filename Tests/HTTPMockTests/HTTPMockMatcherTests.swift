@@ -369,7 +369,7 @@ struct HTTPMockMatcherTests {
 
     // MARK: - Helpers
 
-    func makeKey(
+    private func makeKey(
         host: String = "api.example.com",
         path: String = "/search",
         queryItems: [String: String]? = nil,
@@ -383,7 +383,7 @@ struct HTTPMockMatcherTests {
         )
     }
 
-    func checkMatch(
+    private func checkMatch(
         host: String = "api.example.com",
         path: String = "/search",
         queryItems: [String: String] = [:],
