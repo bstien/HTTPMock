@@ -85,14 +85,14 @@ final class HTTPMockURLProtocol: URLProtocol {
 
         // Let user know if they're trying to insert responses after an eternal mock.
         if queue.contains(where: \.isEternal) {
-            HTTPMockLog.warning("Registering response(s) after an eternal mock for \(mockKeyDescription(key)). These responses will never be served.")
+            HTTPMockLog.warning("Registered response(s) after an eternal mock for \(keyDescription(key)). These responses will never be served.")
         }
 
         queue.append(contentsOf: responses)
         mockQueue[key] = queue
         setQueue(for: mockIdentifier, mockQueue)
 
-        HTTPMockLog.info("Registered \(responses.count) response(s) for \(mockKeyDescription(key))")
+        HTTPMockLog.info("Registered \(responses.count) response(s) for \(keyDescription(key))")
         HTTPMockLog.debug("Current queue size for \(key.host)\(key.path): \(queue.count)")
     }
 
@@ -150,12 +150,12 @@ final class HTTPMockURLProtocol: URLProtocol {
             let keyDescription = Self.keyDescription(key)
 
             HTTPMockLog.trace("Found mock in queue for matching registration: '\(keyDescription)'")
+            HTTPMockLog.debug("Remaining queue count for '\(keyDescription)': \(Self.queueSize(for: mockIdentifier, key: key))")
 
             let sendResponse = { [weak self] in
                 guard let self else { return }
                 do {
                     HTTPMockLog.info("Serving mock for incoming request \(host)\(path) (\(self.statusCode(of: mock)))")
-                    HTTPMockLog.debug("Remaining queue count for '\(keyDescription)': \(Self.queueSize(for: mockIdentifier, key: key))")
 
                     let response = HTTPURLResponse(
                         url: url,
@@ -263,7 +263,7 @@ final class HTTPMockURLProtocol: URLProtocol {
                     let copy = first.copyWithNewLifetime(.multiple(count - 1))
                     mockQueues[matchingKey] = [copy] + queue
                     setQueue(for: mockIdentifier, mockQueues)
-                    HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(mockKeyDescription(matchingKey))")
+                    HTTPMockLog.info("Mock response will be used \(count) more time(s) for \(keyDescription(matchingKey))")
                     return MockMatch(key: matchingKey, response: copy)
                 }
             case .eternal:
@@ -271,7 +271,7 @@ final class HTTPMockURLProtocol: URLProtocol {
             }
 
             if queue.isEmpty {
-                HTTPMockLog.info("Queue now depleted for \(mockKeyDescription(matchingKey))")
+                HTTPMockLog.info("Queue now depleted for \(keyDescription(matchingKey))")
             }
 
             return MockMatch(key: matchingKey, response: first)
@@ -293,10 +293,6 @@ extension HTTPMockURLProtocol {
 
     private static func requestDescription(host: String, path: String, query: [String: String]) -> String {
         "\(host)\(path) \(describeQuery(query, nil, dropQueryMatching: true))"
-    }
-
-    private static func mockKeyDescription(_ key: Key) -> String {
-        "\(key.host)\(key.path) \(describeQuery(key.queryItems, key.queryMatching))"
     }
 
     private static func queueSize(for mockIdentifier: UUID, key: Key) -> Int {
