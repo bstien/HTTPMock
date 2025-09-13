@@ -185,23 +185,26 @@ final class HTTPMockURLProtocol: URLProtocol {
             switch Self.getUnmockedPolicy(for: mockIdentifier) {
             case .notFound:
                 HTTPMockLog.error("No mock found for request '\(requestDescription)' — returning 404")
-                let resp = HTTPURLResponse(
+                let response = HTTPURLResponse(
                     url: url,
                     statusCode: 404,
                     httpVersion: "HTTP/1.1",
                     headerFields: ["Content-Type": "text/plain"]
                 )!
-                client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
                 client?.urlProtocol(self, didLoad: Data("No mock for \(host)\(path)".utf8))
                 client?.urlProtocolDidFinishLoading(self)
 
             case .passthrough:
                 HTTPMockLog.info("No mock found for \(requestDescription) — passthrough to network")
-                var req = request
-                let mutableReq = (req as NSURLRequest).mutableCopy() as! NSMutableURLRequest
-                URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutableReq) // prevent loop
-                req = mutableReq as URLRequest
-                let task = passthroughSession.dataTask(with: req) { data, response, error in
+                var request = request
+
+                // Set known value on request to prevent handling the same request multiple times.
+                let mutableRequest = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+                URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutableRequest)
+                request = mutableRequest as URLRequest
+
+                let task = passthroughSession.dataTask(with: request) { data, response, error in
                     if let error {
                         self.client?.urlProtocol(self, didFailWithError: error)
                         return
