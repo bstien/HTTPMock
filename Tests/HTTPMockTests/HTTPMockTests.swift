@@ -36,12 +36,115 @@ struct HTTPMockTests {
     }
 
     @Test
-    func itReturnsAHardcodedMessageOn404NotFound() async throws {
+    func unmockedPolicy_default_returnsHardcoded404Response() async throws {
         let url = try #require(URL(string: "https://example.com"))
         let (data, response) = try await httpMock.urlSession.data(from: url)
 
         #expect(response.httpStatusCode == 404)
         #expect(data.toString == "No mock for example.com/")
+    }
+
+    @Test
+    func unmockedPolicy_userDefinedMock_returnsCustomResponse() async throws {
+        // Configure custom unmocked response
+        httpMock.unmockedPolicy = .mock(.plaintext("Custom unmocked response", status: .other(418), headers: ["X-Custom": "Header"]))
+
+        let url = try #require(URL(string: "https://example.com/unmocked"))
+        let (data, response) = try await httpMock.urlSession.data(from: url)
+
+        #expect(response.httpStatusCode == 418) 
+        #expect(data.toString == "Custom unmocked response")
+        #expect(response.headerValue(for: "X-Custom") == "Header")
+    }
+
+    @Test
+    func unmockedPolicy_userDefinedMock_withDelay() async throws {
+        // Configure delayed unmocked response
+        httpMock.unmockedPolicy = .mock(.plaintext("Delayed unmocked", delivery: .delayed(0.2)))
+
+        let url = try #require(URL(string: "https://example.com/delayed-unmocked"))
+        let start = Date()
+        let (data, response) = try await httpMock.urlSession.data(from: url)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(response.httpStatusCode == 200)
+        #expect(data.toString == "Delayed unmocked")
+        #expect(elapsed >= 0.18) // Account for scheduling jitter
+    }
+
+    @Test
+    func unmockedPolicy_userDefinedMock_withFileResponse() async throws {
+        // Create a temporary file
+        let fileContent = "{\"error\": \"No mock configured\", \"code\": 999}"
+        let url = try writeTempFile(named: "unmocked", ext: "json", contents: Data(fileContent.utf8))
+        
+        // Configure file-based unmocked response
+        httpMock.unmockedPolicy = .mock(.file(url: url, status: .other(503), headers: ["X-Source": "File"]))
+
+        let requestURL = try #require(URL(string: "https://example.com/file-unmocked"))
+        let (data, response) = try await httpMock.urlSession.data(from: requestURL)
+
+        #expect(response.httpStatusCode == 503)
+        #expect(data.toString == fileContent)
+        #expect(response.headerValue(for: "Content-Type") == "application/json")
+        #expect(response.headerValue(for: "X-Source") == "File")
+    }
+
+    @Test
+    func unmockedPolicy_userDefinedMock_multipleLifetime() async throws {
+        // Configure unmocked response with multiple lifetime
+        // Lifetime *IS NOT* tracked across unmocked requests like it is for queued responses
+        httpMock.unmockedPolicy = .mock(.plaintext("Used multiple times", lifetime: .multiple(3)))
+
+        let url = try #require(URL(string: "https://example.com/multi-unmocked"))
+
+        // Test that the unmocked response is served consistently
+        for _ in 1...5 {
+            let (data, response) = try await httpMock.urlSession.data(from: url)
+            #expect(response.httpStatusCode == 200)
+            #expect(data.toString == "Used multiple times")
+        }
+        
+        // The response should continue to be available since unmocked policies
+        // don't maintain queue state like regular mocked responses
+    }
+
+    @Test
+    func unmockedPolicy_userDefinedMock_eternalLifetime() async throws {
+        // Configure eternal unmocked response
+        httpMock.unmockedPolicy = .mock(.plaintext("Always available", lifetime: .eternal))
+
+        let url = try #require(URL(string: "https://example.com/eternal-unmocked"))
+
+        // Should work indefinitely
+        for _ in 1...5 {
+            let (data, response) = try await httpMock.urlSession.data(from: url)
+            #expect(response.httpStatusCode == 200)
+            #expect(data.toString == "Always available")
+        }
+    }
+
+    @Test
+    func unmockedPolicy_switchingBetweenPolicies() async throws {
+        let url = try #require(URL(string: "https://example.com/policy-switch"))
+
+        // Start with custom mock
+        httpMock.unmockedPolicy = .mock(.plaintext("Custom mock"))
+        let (data1, response1) = try await httpMock.urlSession.data(from: url)
+        #expect(response1.httpStatusCode == 200)
+        #expect(data1.toString == "Custom mock")
+
+        // Switch to notFound
+        httpMock.unmockedPolicy = .notFound
+        let (data2, response2) = try await httpMock.urlSession.data(from: url)
+        #expect(response2.httpStatusCode == 404)
+        #expect(data2.toString == "No mock for example.com/policy-switch")
+
+        // Switch back to a different custom mock
+        httpMock.unmockedPolicy = .mock(.plaintext("Different mock", status: .other(400)))
+        let (data3, response3) = try await httpMock.urlSession.data(from: url)
+        #expect(response3.httpStatusCode == 400)
+        #expect(data3.toString == "Different mock")
     }
 
     @Test
