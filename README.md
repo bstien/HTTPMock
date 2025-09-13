@@ -122,6 +122,110 @@ Path("/search", query: ["q": "swift"], matching: .contains) {
 }
 ```
 
+## Wildcard patterns
+Both hosts and paths support wildcard matching using glob-style patterns. This is useful for mocking multiple similar endpoints without registering each variation individually.
+
+### Single segment wildcards (`*`)
+Match within a single segment only. Segments are separated by `.` for hosts and `/` for paths.
+
+#### Host wildcards
+```swift
+HTTPMock.shared.registerResponses {
+    Host("*.example.com") { // Single host pattern wildcard.
+        Path("/users") {
+            MockResponse.plaintext("wildcard host")
+        }
+    }
+}
+```
+
+The host pattern (`*.example.com`) matches i.e.:
+- `api.example.com`
+- `staging.example.com`.
+
+Since `*` only matches on a single segment this means the pattern will **NOT** match i.e. `api.staging.example.com`.
+
+#### Path wildcards
+```swift
+HTTPMock.shared.addResponses(
+    forPath: "/api/*/users", // Single path pattern wildcard.
+    host: "api.example.com",
+    responses: [.encodable(users)]
+)
+```
+
+The path pattern (`/api/*/users`) matches i.e.:
+- `/api/v1/users`
+- `/api/v2/users`.
+
+Since `*` only matches on a single segment this means the pattern will **NOT** match i.e. `/api/v1/beta/users`
+
+### Multi-segment wildcards (`**`)
+Match across multiple segments (zero or more). Useful for flexible host/path matching.
+
+#### Multi-segment host wildcards
+```swift
+HTTPMock.shared.registerResponses {
+    Host("**.example.com") {
+        Path("/api/**/data") {
+            MockResponse.plaintext("flexible matching")
+        }
+    }
+}
+```
+
+The host pattern (`**.example.com`) matches i.e.:
+- `api.example.com`
+- `api.staging.example.com`.
+
+The path pattern (`/api/**/data`) matches i.e.:
+- `/api/data`
+- `/api/v1/data`
+- `/api/v1/beta/data`.
+
+#### Complex patterns
+```swift
+HTTPMock.shared.addResponses(
+    forPath: "/api/**/users/*",
+    host: "api-*.example.com",
+    responses: [.encodable(users)]
+)
+```
+
+The combination of host and path pattern will match i.e. `api-staging.example.com/api/v1/beta/users/123`.
+
+### Pattern specificity
+When multiple patterns could match the same request, HTTPMock automatically chooses the most specific:
+
+1. **Exact matches** always win over wildcards.
+2. **Fewer wildcards** beat more wildcards.
+3. **Longer literal content** wins ties.
+
+Given the registered patterns in the code block below, the table explains which pattern(s) would match, and win, on an incoming request.
+
+```swift
+Host("api.example.com")     // exact - highest priority
+Host("*.example.com")       // single wildcard
+Host("**.example.com")      // multi wildcard - lowest priority
+```
+
+| Incoming request | Pattern matches | Winning pattern | Why? |
+| :- | - | - | - |
+| `api.example.com` | Matches on all three registered patterns | The exact pattern | It has no wildcards (lowest score). |
+| `api-test.example.com` | Matches on both the single- and multi wildcard patterns | The single wildcard pattern | It has the fewest wildcards (lowest score). |
+| `api.staging.example.com` | Matches only on the multi wildcard pattern | The multi wildcard pattern | The only pattern that matches. |
+
+#### Specificity tie-breaker
+
+Here's an example to provide more context to the specificity score when a tie between two patterns occurs. Given the registered patterns:
+
+```swift
+Host("*.example.*")         // two single wildcard
+Host("**.example.com")      // multi wildcard
+```
+
+An incoming request to **`api.example.com`** would match on both of the patterns above, but the winning pattern will be the **multi wildcard pattern**. Both patterns have exactly two wildcards, but the multi wildcard pattern has a **longer matching literal** which gives it a higher score.
+
 ## File-based responses
 Serve response data directly from a file on disk. Useful for pre-recorded and/or large responses. Either specify the `Content-Type` manually, or let it be inferred from the file.
 
