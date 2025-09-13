@@ -35,7 +35,7 @@ A tiny, test-first way to mock `URLSession` — **fast to set up, easy to read, 
 Add this package to your test target:
 
 ```swift
-.package(url: "https://github.com/bstien/HTTPMock.git", from: "0.0.3")
+.package(url: "https://github.com/bstien/HTTPMock.git", from: "0.0.4")
 ```
 
 ## Quick start
