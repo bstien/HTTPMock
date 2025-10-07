@@ -7,49 +7,54 @@ public enum HTTPMockLog {
     public static var level: Level = .trace
 
     public static func error(_ message: @autoclosure () -> String) {
-        if should(.error) {
+        let level = Level.error
+        if shouldLog(level) {
             let message = message()
             logger.error("[HTTPMock][\(level.description)] \(message, privacy: .public)")
-            printToConsole("⛔️ \(message)", level: .error)
+            printToConsole("⛔️ \(message)", level: level)
         }
     }
 
     public static func warning(_ message: @autoclosure () -> String) {
-        if should(.warning) {
+        let level = Level.warning
+        if shouldLog(level) {
             let message = message()
             logger.warning("[HTTPMock][\(level.description)] \(message, privacy: .public)")
-            printToConsole("⚠️ \(message)", level: .warning)
+            printToConsole("⚠️ \(message)", level: level)
         }
     }
 
     public static func info(_ message: @autoclosure () -> String) {
-        if should(.info) {
+        let level = Level.info
+        if shouldLog(level) {
             let message = message()
             logger.info("[HTTPMock][\(level.description)] \(message, privacy: .public)")
-            printToConsole(message, level: .info)
+            printToConsole(message, level: level)
         }
     }
 
     public static func debug(_ message: @autoclosure () -> String) {
-        if should(.debug) {
+        let level = Level.debug
+        if shouldLog(level) {
             let message = message()
             logger.debug("[HTTPMock][\(level.description)] \(message, privacy: .public)")
-            printToConsole(message, level: .debug)
+            printToConsole(message, level: level)
         }
     }
 
     public static func trace(_ message: @autoclosure () -> String) {
-        if should(.trace) {
+        let level = Level.trace
+        if shouldLog(level) {
             let message = message()
             logger.log("[HTTPMock][\(level.description)] \(message, privacy: .public)")
-            printToConsole(message, level: .trace)
+            printToConsole(message, level: level)
         }
     }
 
     // MARK: - Private methods
 
     @inline(__always)
-    private static func should(_ l: Level) -> Bool {
+    private static func shouldLog(_ l: Level) -> Bool {
         isEnabled && l.rawValue <= level.rawValue
     }
 

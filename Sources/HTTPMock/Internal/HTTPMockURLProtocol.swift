@@ -230,6 +230,11 @@ final class HTTPMockURLProtocol: URLProtocol {
                 }
                 task.resume()
 
+            case .throwError(let errorToThrow):
+                HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — throwing provided error")
+
+                client?.urlProtocol(self, didFailWithError: errorToThrow as NSError)
+
             case .fatalError:
                 HTTPMockLog.info("No mock found for incoming request '\(requestDescription)' — performing a fatalError")
 

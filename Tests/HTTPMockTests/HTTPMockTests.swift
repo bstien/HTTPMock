@@ -148,6 +148,20 @@ struct HTTPMockTests {
     }
 
     @Test
+    func unmockedPolicy_throwError() async throws {
+        let url = try #require(URL(string: "https://example.com/throw-error"))
+        
+        httpMock.unmockedPolicy = .throwError(UnmockedError.wasThrown)
+
+        do {
+            _ = try await httpMock.urlSession.data(from: url)
+            Issue.record("Expected error not thrown")
+        } catch {
+            #expect((error as NSError).domain == UnmockedError.errorDomain)
+        }
+    }
+
+    @Test
     func itDoesNotRegisterTheKeyIfNoResponsesAreProvided() {
         let key = makeKey()
         httpMock.addResponses([], for: key)
@@ -663,4 +677,11 @@ struct HTTPMockTests {
             queryMatching: queryMatching
         )
     }
+}
+
+private enum UnmockedError: Int, Error, CustomNSError {
+    case wasThrown = 666
+
+    static var errorDomain: String { "HTTPMock.UnmockedError" }
+    var errorCode: Int { rawValue }
 }
