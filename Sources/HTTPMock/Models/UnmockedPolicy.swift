@@ -11,7 +11,10 @@ public enum UnmockedPolicy {
     /// Let the request pass through to the internet.
     /// Useful for integration tests where you want to mock some responses, but let others hit actual network.
     case passthrough
-    
+
+    /// Throw the specified error when an unmocked request is encountered.
+    case throwError(Error)
+
     /// Perform a `fatalError()` call to abruptly end the running app/test.
     /// Useful for strict testing of your networking.
     case fatalError
